@@ -20,6 +20,16 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow TrustLink to use your location to find nearby workers."
+        }
+      ],
+      "@react-native-community/datetimepicker"
+    ]
   }
 }
