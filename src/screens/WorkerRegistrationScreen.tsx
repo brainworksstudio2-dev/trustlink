@@ -31,12 +31,7 @@ const PROFESSIONS = [
   { id: 'mechanics', name: 'Mechanics', icon: 'car' },
 ];
 
-const ID_TYPES = [
-  { id: 'ghana_card', name: 'Ghana Card', icon: 'card', description: 'National Identification Card (Ghana)' },
-  { id: 'drivers_license', name: "Driver's License", icon: 'car-sport', description: 'Valid driving license' },
-  { id: 'passport', name: 'Passport', icon: 'globe', description: 'International travel passport' },
-  { id: 'professional_license', name: 'Professional License', icon: 'ribbon', description: 'Trade / state credentials' },
-];
+
 
 async function uploadToCloudinary(localUri: string, folder: string = 'trustlink'): Promise<string> {
   const formData = new FormData();
@@ -59,8 +54,14 @@ async function uploadToCloudinary(localUri: string, folder: string = 'trustlink'
 }
 
 export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrationScreenProps) {
+  // Existing profile (edit mode)
+  const [existingWorker, setExistingWorker] = useState<any | null>(null);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+
   // Profile photo
   const [avatarLocalUri, setAvatarLocalUri] = useState<string | null>(null);
+  // Keeps track of already-uploaded Cloudinary URL when not picking a new image
+  const [existingAvatarUrl, setExistingAvatarUrl] = useState<string | null>(null);
 
   // Profession
   const [selectedProfession, setSelectedProfession] = useState('carpentry');
@@ -84,15 +85,52 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
   const [locationAddress, setLocationAddress] = useState('');
   const [isFetchingLocation, setIsFetchingLocation] = useState(false);
 
-  // Identity documents
-  const [selectedIdType, setSelectedIdType] = useState<string | null>(null);
-  const [idDocLocalUri, setIdDocLocalUri] = useState<string | null>(null);
+
 
   // Availability
   const [readyToWork, setReadyToWork] = useState(true);
 
   // Submission
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // ─── Load existing profile on mount ─────────────────────────────────────────
+  useEffect(() => {
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { setIsLoadingProfile(false); return; }
+
+      const { data } = await supabase
+        .from('workers')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .maybeSingle();
+
+      if (data) {
+        setExistingWorker(data);
+        // Pre-fill all fields
+        setExistingAvatarUrl(data.avatar_url || null);
+        // Match profession id from specialty name
+        const matchedProf = PROFESSIONS.find(
+          p => p.name === data.specialty || data.specialty?.startsWith(p.name)
+        );
+        if (matchedProf) setSelectedProfession(matchedProf.id);
+        else setOtherSpec(data.specialty || '');
+        setBio(data.about_text || '');
+        setRate(data.rate ? data.rate.replace('/hr', '') : '');
+        setExperience(data.experience ? data.experience.replace(' Years', '') : '');
+        setLinkedin(data.linkedin_url || '');
+        setInstagram(data.instagram_url || '');
+        setTiktok(data.tiktok_url || '');
+        setPortfolio(data.portfolio_url || '');
+        setReadyToWork(data.available ?? true);
+        if (data.latitude && data.longitude) {
+          setUserLocation({ latitude: data.latitude, longitude: data.longitude });
+          setLocationAddress(data.location_name || '');
+        }
+      }
+      setIsLoadingProfile(false);
+    })();
+  }, []);
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -139,14 +177,15 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
   };
 
   const handleSubmit = async () => {
-    if (!avatarLocalUri) {
+    const isEditing = !!existingWorker;
+
+    // For new registrations, photo + ID are required.
+    // For edits, we keep existing files if no new one is picked.
+    if (!isEditing && !avatarLocalUri) {
       Alert.alert('Missing Photo', 'Please upload a professional profile photo.');
       return;
     }
-    if (!selectedIdType || !idDocLocalUri) {
-      Alert.alert('Verification Required', 'Please select an ID type and upload a photo of it.');
-      return;
-    }
+
     if (!userLocation) {
       Alert.alert('Service Area Required', 'Please set your service location on the map.');
       return;
@@ -154,30 +193,34 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
 
     setIsSubmitting(true);
     try {
-      // Get current user
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Please log in first.');
 
       Toast.show({ type: 'info', text1: 'Uploading photos…', position: 'top', visibilityTime: 3000 });
 
-      // Upload Avatar to Cloudinary
-      const avatarUrl = await uploadToCloudinary(avatarLocalUri, 'trustlink/avatars');
+      // Only re-upload if a new local file was picked
+      const avatarUrl = avatarLocalUri
+        ? await uploadToCloudinary(avatarLocalUri, 'trustlink/avatars')
+        : existingAvatarUrl;
 
-      // Upload ID document to Cloudinary
-      const idDocUrl = await uploadToCloudinary(idDocLocalUri, 'trustlink/identity');
-
-      Toast.show({ type: 'info', text1: 'Creating your profile…', position: 'top', visibilityTime: 3000 });
+      Toast.show({
+        type: 'info',
+        text1: isEditing ? 'Saving changes…' : 'Creating your profile…',
+        position: 'top',
+        visibilityTime: 3000,
+      });
 
       const workerData = {
+        user_id: session.user.id,
         name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Unknown',
         specialty: otherSpec || PROFESSIONS.find(p => p.id === selectedProfession)?.name || selectedProfession,
         category: `${PROFESSIONS.find(p => p.id === selectedProfession)?.name || selectedProfession}s`,
         avatar_url: avatarUrl,
-        identity_document_url: idDocUrl,
+        identity_document_url: existingWorker?.identity_document_url || null,
         available: readyToWork,
         availability_text: readyToWork ? 'Available Now' : 'Currently Unavailable',
         rate: rate ? `${rate}/hr` : null,
-        experience: experience ? `${experience} Years` : null,
+        experience: experience ? `${experience} Years` : '0 Years',
         about_text: bio || null,
         latitude: userLocation.latitude,
         longitude: userLocation.longitude,
@@ -188,21 +231,34 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
         portfolio_url: portfolio || null,
       };
 
-      const { error } = await supabase.from('workers').insert([workerData]);
-      if (error) throw error;
+      if (isEditing) {
+        // UPDATE existing row
+        const { error } = await supabase
+          .from('workers')
+          .update(workerData)
+          .eq('user_id', session.user.id);
+        if (error) throw error;
+      } else {
+        // INSERT new row
+        const { error } = await supabase.from('workers').insert([workerData]);
+        if (error) throw error;
+      }
 
       setIsSubmitting(false);
       Toast.show({
         type: 'success',
-        text1: 'Registration Complete! 🎉',
-        text2: 'Your profile is live. Clients can now find you!',
+        text1: isEditing ? 'Profile Updated! ✅' : 'Registration Complete! 🎉',
+        text2: isEditing ? 'Your changes are saved.' : 'Your profile is live. Clients can now find you!',
         position: 'top',
         visibilityTime: 4000,
       });
       setTimeout(() => navigation.navigate('Main'), 2000);
     } catch (err: any) {
       setIsSubmitting(false);
-      Alert.alert('Registration Failed', err.message || 'Something went wrong. Please try again.');
+      Alert.alert(
+        isEditing ? 'Update Failed' : 'Registration Failed',
+        err.message || 'Something went wrong. Please try again.'
+      );
     }
   };
 
@@ -215,7 +271,7 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color={Colors.onSurface} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Worker Portal</Text>
+        <Text style={styles.headerTitle}>{existingWorker ? 'Edit Profile' : 'Worker Portal'}</Text>
         <View style={{ width: 36 }} />
       </View>
 
@@ -273,8 +329,8 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
 
           <FormField label="Other / Specialization (optional)" value={otherSpec} onChangeText={setOtherSpec} placeholder="e.g. Smart Home Installation" />
           <FormField label="About You" value={bio} onChangeText={setBio} placeholder="Describe your skills and experience…" multiline />
-          <FormField label="Hourly Rate (GH₵)" value={rate} onChangeText={setRate} placeholder="e.g. 50" keyboardType="numeric" />
-          <FormField label="Years of Experience" value={experience} onChangeText={setExperience} placeholder="e.g. 5" keyboardType="numeric" />
+          <FormField label="Hourly Rate (GH₵) (Optional)" value={rate} onChangeText={setRate} placeholder="e.g. 50" keyboardType="numeric" />
+          <FormField label="Years of Experience (Optional)" value={experience} onChangeText={setExperience} placeholder="e.g. 5" keyboardType="numeric" />
         </View>
 
         {/* ── Step 3: Service Area Map ── */}
@@ -363,65 +419,7 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
           <FormField label="Portfolio Website" value={portfolio} onChangeText={setPortfolio} placeholder="https://myportfolio.com" autoCapitalize="none" />
         </View>
 
-        {/* ── Step 5: Identity Verification ── */}
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeaderRow}>
-            <SectionHeader icon="shield-half" title="Identity Verification" />
-            <View style={styles.requiredBadge}>
-              <Text style={styles.requiredBadgeText}>REQUIRED</Text>
-            </View>
-          </View>
-          <Text style={styles.sectionDesc}>Choose at least one valid ID to upload. All documents are encrypted and stored securely.</Text>
 
-          <View style={styles.idGrid}>
-            {ID_TYPES.map((idType) => {
-              const isSelected = selectedIdType === idType.id;
-              return (
-                <TouchableOpacity
-                  key={idType.id}
-                  style={[styles.idCard, isSelected && styles.idCardSelected]}
-                  onPress={() => setSelectedIdType(idType.id)}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name={idType.icon as any} size={22} color={isSelected ? Colors.primary : Colors.outline} />
-                  <Text style={[styles.idCardName, isSelected && styles.idCardNameSelected]}>{idType.name}</Text>
-                  <Text style={styles.idCardDesc}>{idType.description}</Text>
-                  {isSelected && (
-                    <View style={styles.idCardCheck}>
-                      <Ionicons name="checkmark-circle" size={16} color={Colors.primary} />
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {selectedIdType && (
-            <TouchableOpacity
-              style={[styles.uploadDocBtn, idDocLocalUri && styles.uploadDocBtnDone]}
-              onPress={() => pickImage(setIdDocLocalUri)}
-              activeOpacity={0.8}
-            >
-              {idDocLocalUri ? (
-                <>
-                  <Image source={{ uri: idDocLocalUri }} style={styles.docThumbnail} />
-                  <View style={styles.uploadDocInfo}>
-                    <Text style={styles.uploadDocTitle}>Document uploaded ✓</Text>
-                    <Text style={styles.uploadDocSub}>Tap to change photo</Text>
-                  </View>
-                </>
-              ) : (
-                <>
-                  <Ionicons name="cloud-upload-outline" size={24} color={Colors.primary} />
-                  <View style={styles.uploadDocInfo}>
-                    <Text style={styles.uploadDocTitle}>Upload {ID_TYPES.find(i => i.id === selectedIdType)?.name}</Text>
-                    <Text style={styles.uploadDocSub}>Take or choose a clear photo of your document</Text>
-                  </View>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
-        </View>
 
         {/* ── Step 6: Availability ── */}
         <View style={styles.sectionCard}>
@@ -461,7 +459,7 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
             <ActivityIndicator color={Colors.onPrimary} />
           ) : (
             <>
-              <Text style={styles.completeBtnText}>Complete Registration</Text>
+              <Text style={styles.completeBtnText}>{existingWorker ? 'Save Changes' : 'Complete Registration'}</Text>
               <Ionicons name="arrow-forward" size={18} color={Colors.onPrimary} />
             </>
           )}

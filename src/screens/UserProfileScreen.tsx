@@ -7,7 +7,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { Session } from '@supabase/supabase-js';
 
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 
 export default function UserProfileScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -16,6 +16,8 @@ export default function UserProfileScreen() {
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [workerProfile, setWorkerProfile] = useState<any | null>(null);
+  const [loadingWorker, setLoadingWorker] = useState(true);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -26,6 +28,31 @@ export default function UserProfileScreen() {
       }
     });
   }, []);
+
+  // Re-fetch worker profile every time this tab comes into focus
+  // so it updates immediately after the user completes registration
+  useFocusEffect(
+    React.useCallback(() => {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user?.id) {
+          fetchWorkerProfile(session.user.id);
+        } else {
+          setLoadingWorker(false);
+        }
+      });
+    }, [])
+  );
+
+  const fetchWorkerProfile = async (userId: string) => {
+    setLoadingWorker(true);
+    const { data, error } = await supabase
+      .from('workers')
+      .select('id, name, specialty, available, avatar_url, rate, experience')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (!error) setWorkerProfile(data ?? null);
+    setLoadingWorker(false);
+  };
 
   const handleUpdateProfile = async () => {
     setIsSubmitting(true);
@@ -96,18 +123,51 @@ export default function UserProfileScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.workerPromoContainer}>
-          <View style={styles.workerPromoIcon}>
-            <Ionicons name="construct" size={24} color={Colors.onPrimary} />
-          </View>
-          <View style={styles.workerPromoTextContainer}>
-            <Text style={styles.workerPromoTitle}>Are you a professional?</Text>
-            <Text style={styles.workerPromoSubtitle}>Join our platform to get hired.</Text>
-          </View>
-          <TouchableOpacity style={styles.workerPromoBtn} onPress={handleBecomeWorker}>
-            <Text style={styles.workerPromoBtnText}>Apply Now</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Worker section — status card if registered, promo if not */}
+        {!loadingWorker && (
+          workerProfile ? (
+            <TouchableOpacity
+              style={styles.workerStatusCard}
+              onPress={handleBecomeWorker}
+              activeOpacity={0.85}
+            >
+              <View style={styles.workerStatusLeft}>
+                <View style={styles.workerStatusIconCircle}>
+                  <Ionicons name="construct" size={22} color={Colors.primary} />
+                </View>
+                <View style={styles.workerStatusText}>
+                  <Text style={styles.workerStatusTitle}>My Worker Profile</Text>
+                  <Text style={styles.workerStatusSpecialty} numberOfLines={1}>
+                    {workerProfile.specialty || 'Professional'}
+                  </Text>
+                  <View style={styles.workerStatusBadge}>
+                    <View style={[styles.dot, { backgroundColor: workerProfile.available ? Colors.secondary : Colors.outline }]} />
+                    <Text style={[styles.workerStatusAvail, { color: workerProfile.available ? Colors.secondary : Colors.outline }]}>
+                      {workerProfile.available ? 'Available Now' : 'Unavailable'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+              <View style={styles.workerEditBtn}>
+                <Ionicons name="create-outline" size={16} color={Colors.primary} />
+                <Text style={styles.workerEditBtnText}>Edit</Text>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.workerPromoContainer}>
+              <View style={styles.workerPromoIcon}>
+                <Ionicons name="construct" size={24} color={Colors.onPrimary} />
+              </View>
+              <View style={styles.workerPromoTextContainer}>
+                <Text style={styles.workerPromoTitle}>Are you a professional?</Text>
+                <Text style={styles.workerPromoSubtitle}>Join our platform to get hired.</Text>
+              </View>
+              <TouchableOpacity style={styles.workerPromoBtn} onPress={handleBecomeWorker}>
+                <Text style={styles.workerPromoBtnText}>Apply Now</Text>
+              </TouchableOpacity>
+            </View>
+          )
+        )}
 
         <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
           <Ionicons name="log-out-outline" size={20} color={Colors.error} />
@@ -352,6 +412,78 @@ const styles = StyleSheet.create({
   saveBtnText: {
     ...Typography.labelMd,
     color: Colors.onPrimary,
+    fontWeight: '700',
+  },
+  // Worker status card (shown when already registered as a worker)
+  workerStatusCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.xl,
+    borderWidth: 1.5,
+    borderColor: Colors.primary + '30',
+    ...Shadow.sm,
+  },
+  workerStatusLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    flex: 1,
+  },
+  workerStatusIconCircle: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: Colors.primaryContainer + '18',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  workerStatusText: {
+    flex: 1,
+  },
+  workerStatusTitle: {
+    ...Typography.labelMd,
+    color: Colors.onSurface,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  workerStatusSpecialty: {
+    ...Typography.bodySm,
+    color: Colors.onSurfaceVariant,
+    marginBottom: 4,
+  },
+  workerStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  dot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  workerStatusAvail: {
+    ...Typography.labelSm,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  workerEditBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.primaryContainer + '18',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.primary + '30',
+  },
+  workerEditBtnText: {
+    ...Typography.labelSm,
+    color: Colors.primary,
     fontWeight: '700',
   },
 });

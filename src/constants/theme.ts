@@ -86,9 +86,31 @@ export const Shadow = {
     shadowRadius: 20,
     elevation: 8,
   },
+  sm: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  md: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  lg: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 6,
+  },
 };
 
 export const Typography = {
+  displaySm: { fontSize: 36, fontWeight: '800' as const, lineHeight: 44, letterSpacing: -1 },
   headlineLg: { fontSize: 32, fontWeight: '700' as const, lineHeight: 40, letterSpacing: -0.64 },
   headlineLgMobile: { fontSize: 28, fontWeight: '700' as const, lineHeight: 36, letterSpacing: -0.56 },
   headlineMd: { fontSize: 24, fontWeight: '600' as const, lineHeight: 32, letterSpacing: -0.24 },
@@ -96,6 +118,7 @@ export const Typography = {
   bodyLg: { fontSize: 18, fontWeight: '400' as const, lineHeight: 28 },
   bodyMd: { fontSize: 16, fontWeight: '400' as const, lineHeight: 24 },
   bodySm: { fontSize: 14, fontWeight: '400' as const, lineHeight: 20 },
+  labelLg: { fontSize: 16, fontWeight: '700' as const, lineHeight: 20 },
   labelMd: { fontSize: 14, fontWeight: '600' as const, lineHeight: 16, letterSpacing: 0.7 },
   labelSm: { fontSize: 12, fontWeight: '500' as const, lineHeight: 14 },
 };

@@ -102,11 +102,11 @@ export default function WorkerProfileScreen({ navigation, route }: WorkerProfile
   const totalReviews = reviews.length > 0 ? reviews.length : worker.reviews;
 
   const handleCall = () => {
-    Linking.openURL('tel:1234567890');
+    Linking.openURL(`tel:${worker.phone_number || '1234567890'}`);
   };
 
   const handleChat = () => {
-    Linking.openURL('https://wa.me/1234567890');
+    Linking.openURL(`https://wa.me/${worker.whatsapp_number || '1234567890'}`);
   };
 
   const handleBook = () => {
@@ -141,7 +141,7 @@ export default function WorkerProfileScreen({ navigation, route }: WorkerProfile
         <View style={styles.profileHeaderCard}>
           <View style={styles.profileInfoRow}>
             <View style={styles.avatarContainer}>
-              <Image source={{ uri: worker.avatar }} style={styles.avatar} />
+              <Image source={{ uri: worker.avatar_url }} style={styles.avatar} />
               <View style={styles.verifiedBadge}>
                 <Ionicons name="checkmark-circle" size={16} color={Colors.gold} />
               </View>
@@ -152,7 +152,7 @@ export default function WorkerProfileScreen({ navigation, route }: WorkerProfile
               <Text style={styles.specialtyText}>{worker.specialty}</Text>
               <View style={[styles.statusBadge, worker.available ? styles.badgeGreen : styles.badgeOrange]}>
                 <Text style={[styles.statusBadgeText, worker.available ? styles.textGreen : styles.textOrange]}>
-                  {worker.availabilityText}
+                  {worker.availability_text || (worker.available ? 'Available Now' : 'Unavailable')}
                 </Text>
               </View>
             </View>
@@ -174,7 +174,7 @@ export default function WorkerProfileScreen({ navigation, route }: WorkerProfile
               </View>
               <View>
                 <Text style={styles.metricLabel}>Experience</Text>
-                <Text style={styles.metricValue}>{worker.experience || '8+ Years'}</Text>
+                <Text style={styles.metricValue}>{worker.experience || '0 Years'}</Text>
               </View>
             </View>
 
@@ -184,7 +184,7 @@ export default function WorkerProfileScreen({ navigation, route }: WorkerProfile
               </View>
               <View>
                 <Text style={styles.metricLabel}>Location</Text>
-                <Text style={styles.metricValue}>{worker.location || 'Brooklyn, NY'}</Text>
+                <Text style={styles.metricValue}>{worker.location_name || 'Location Not Set'}</Text>
               </View>
             </View>
           </View>
@@ -235,7 +235,7 @@ export default function WorkerProfileScreen({ navigation, route }: WorkerProfile
         <View style={styles.pricingCard}>
           <View>
             <Text style={styles.pricingLabel}>Starting Rate</Text>
-            <Text style={styles.pricingValue}>{worker.rate || '$40/hr'}</Text>
+            <Text style={styles.pricingValue}>{worker.rate || 'Negotiable'}</Text>
           </View>
           <View style={styles.instantBookingBadge}>
             <Text style={styles.instantBookingText}>Instant Booking Available</Text>

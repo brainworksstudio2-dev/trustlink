@@ -13,7 +13,26 @@ type ExploreScreenProps = {
 
 import { supabase } from '../lib/supabase';
 
-const FILTER_CHIPS = ['All Pros', 'Electricians', 'Plumbers', 'Carpenters', 'Locksmiths'];
+// Map category -> icon name
+const CATEGORY_ICON: Record<string, string> = {
+  Electricians: 'flash',
+  Plumbers: 'water',
+  Carpenters: 'hammer',
+  Cleanings: 'sparkles',
+  Mechanics: 'car',
+  Photographers: 'camera',
+  Locksmiths: 'key',
+};
+
+const getCategoryIcon = (category: string): string => {
+  if (!category) return 'construct';
+  // Try exact match first, then partial
+  if (CATEGORY_ICON[category]) return CATEGORY_ICON[category];
+  const key = Object.keys(CATEGORY_ICON).find(k =>
+    category.toLowerCase().includes(k.toLowerCase().replace(/s$/, ''))
+  );
+  return key ? CATEGORY_ICON[key] : 'construct';
+};
 
 const generateMockLocation = (baseLat: number, baseLng: number) => {
   const latOffset = (Math.random() - 0.5) * 0.05; // ~2.5km offset
@@ -31,6 +50,7 @@ export default function ExploreScreen({ navigation }: ExploreScreenProps) {
   const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [workersData, setWorkersData] = useState<any[]>([]);
+  const [filterChips, setFilterChips] = useState<string[]>(['All Pros']);
   const [selectedWorker, setSelectedWorker] = useState<any | null>(null);
   const [isLoadingLocation, setIsLoadingLocation] = useState(true);
 
@@ -58,12 +78,21 @@ export default function ExploreScreen({ navigation }: ExploreScreenProps) {
         if (error) {
           console.error("Error fetching workers:", error);
         } else if (data) {
-          // Generate random locations for workers based on user location
+          // Generate random locations for workers that have no real coordinates
           const updatedWorkers = data.map((w: any) => ({
             ...w,
-            coordinate: generateMockLocation(baseLat, baseLng)
+            coordinate:
+              w.latitude && w.longitude
+                ? { latitude: w.latitude, longitude: w.longitude }
+                : generateMockLocation(baseLat, baseLng),
           }));
           setWorkersData(updatedWorkers);
+
+          // Build dynamic filter chips from actual category values
+          const categories = Array.from(
+            new Set(data.map((w: any) => w.category).filter(Boolean))
+          ) as string[];
+          setFilterChips(['All Pros', ...categories]);
         }
       } catch (err) {
         console.error("Fetch exception:", err);
@@ -133,12 +162,7 @@ export default function ExploreScreen({ navigation }: ExploreScreenProps) {
                 >
                   <View style={[styles.markerContainer, selectedWorker?.id === worker.id && styles.markerSelected]}>
                     <Ionicons 
-                      name={
-                        worker.category === 'Electricians' ? 'flash' :
-                        worker.category === 'Plumbers' ? 'water' :
-                        worker.category === 'Locksmiths' ? 'key' :
-                        'hammer'
-                      } 
+                      name={getCategoryIcon(worker.category) as any} 
                       size={18} 
                       color={selectedWorker?.id === worker.id ? Colors.onPrimary : Colors.primary} 
                     />
@@ -157,7 +181,7 @@ export default function ExploreScreen({ navigation }: ExploreScreenProps) {
               <View key={worker.id} style={styles.card}>
                 <View style={styles.topRow}>
                   <View style={styles.avatarContainer}>
-                    <Image source={{ uri: worker.avatar }} style={styles.avatar} />
+                    <Image source={{ uri: worker.avatar_url }} style={styles.avatar} />
                     <View style={styles.verifiedIconContainer}>
                       <Ionicons name="checkmark-circle" size={16} color={Colors.gold} />
                     </View>
@@ -174,7 +198,7 @@ export default function ExploreScreen({ navigation }: ExploreScreenProps) {
                     <View style={styles.metaRow}>
                       <View style={[styles.availabilityBadge, worker.available ? styles.badgeGreen : styles.badgeOrange]}>
                         <Text style={[styles.availabilityText, worker.available ? styles.textGreen : styles.textOrange]}>
-                          {worker.availabilityText}
+                          {worker.availability_text || (worker.available ? 'Available Now' : 'Unavailable')}
                         </Text>
                       </View>
                       <Text style={styles.distanceText}>• {worker.distance}</Text>
@@ -218,7 +242,7 @@ export default function ExploreScreen({ navigation }: ExploreScreenProps) {
 
         <View style={styles.filterSection}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScrollView}>
-            {FILTER_CHIPS.map((chip) => {
+            {filterChips.map((chip) => {
               const isActive = selectedFilter === chip;
               return (
                 <TouchableOpacity
@@ -247,7 +271,7 @@ export default function ExploreScreen({ navigation }: ExploreScreenProps) {
             
             <View style={styles.topRow}>
               <View style={styles.avatarContainer}>
-                <Image source={{ uri: selectedWorker.avatar }} style={styles.avatar} />
+                <Image source={{ uri: selectedWorker.avatar_url }} style={styles.avatar} />
                 <View style={styles.verifiedIconContainer}>
                   <Ionicons name="checkmark-circle" size={16} color={Colors.gold} />
                 </View>
@@ -261,7 +285,7 @@ export default function ExploreScreen({ navigation }: ExploreScreenProps) {
                   </View>
                 </View>
                 <Text style={styles.workerSpecialty}>{selectedWorker.specialty}</Text>
-                <Text style={styles.distanceText} marginTop={4}>{selectedWorker.distance} • {selectedWorker.rate}</Text>
+                <Text style={[styles.distanceText, { marginTop: 4 }]}>{selectedWorker.distance} • {selectedWorker.rate}</Text>
               </View>
             </View>
             

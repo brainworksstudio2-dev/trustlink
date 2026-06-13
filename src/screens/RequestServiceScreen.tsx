@@ -33,7 +33,7 @@ const SERVICE_TYPES = [
 export default function RequestServiceScreen({ navigation, route }: RequestServiceScreenProps) {
   const { worker_id, worker_name } = route.params || {};
 
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(worker_id ? 2 : 1);
   const [serviceType, setServiceType] = useState('plumbing');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(new Date());
@@ -108,12 +108,15 @@ export default function RequestServiceScreen({ navigation, route }: RequestServi
   };
 
   const handleBack = () => {
-    if (step > 1) {
+    const minStep = worker_id ? 2 : 1;
+    if (step > minStep) {
       setStep(step - 1);
     }
   };
 
-  const progressPercent = step * 25;
+  const totalSteps = worker_id ? 3 : 4;
+  const currentStepDisplay = worker_id ? step - 1 : step;
+  const progressPercent = (currentStepDisplay / totalSteps) * 100;
 
   const renderStepContent = () => {
     switch (step) {
@@ -313,12 +316,14 @@ export default function RequestServiceScreen({ navigation, route }: RequestServi
     <SafeAreaView style={styles.safeArea}>
       {/* Header bar */}
       <View style={styles.header}>
-        {step > 1 ? (
+        {step > (worker_id ? 2 : 1) ? (
           <TouchableOpacity style={styles.backCircle} onPress={handleBack}>
             <Ionicons name="arrow-back" size={20} color={Colors.onSurface} />
           </TouchableOpacity>
         ) : (
-          <View style={{ width: 36 }} />
+          <TouchableOpacity style={styles.backCircle} onPress={() => navigation.goBack()}>
+             <Ionicons name="arrow-back" size={20} color={Colors.onSurface} />
+          </TouchableOpacity>
         )}
         <Text style={styles.headerTitle}>{worker_name ? `Book ${worker_name}` : 'Request Service'}</Text>
         <View style={{ width: 36 }} />
@@ -329,7 +334,7 @@ export default function RequestServiceScreen({ navigation, route }: RequestServi
         <View style={styles.progressTrack}>
           <View style={[styles.progressBar, { width: `${progressPercent}%` }]} />
         </View>
-        <Text style={styles.progressText}>Step {step} of 4</Text>
+        <Text style={styles.progressText}>Step {currentStepDisplay} of {totalSteps}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
@@ -338,13 +343,13 @@ export default function RequestServiceScreen({ navigation, route }: RequestServi
 
         {/* Action Button Row */}
         <View style={styles.actionRow}>
-          {step > 1 ? (
+          {step > (worker_id ? 2 : 1) ? (
             <TouchableOpacity style={styles.backButton} onPress={handleBack} activeOpacity={0.8}>
               <Text style={styles.backButtonText}>Back</Text>
             </TouchableOpacity>
           ) : null}
           <TouchableOpacity 
-            style={[styles.continueButton, step === 1 && { width: '100%' }, isSubmitting && { opacity: 0.7 }]} 
+            style={[styles.continueButton, step === (worker_id ? 2 : 1) && { width: '100%' }, isSubmitting && { opacity: 0.7 }]} 
             onPress={handleContinue} 
             activeOpacity={0.9}
             disabled={isSubmitting}

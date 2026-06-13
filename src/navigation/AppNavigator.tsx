@@ -16,6 +16,8 @@ import RequestServiceScreen from '../screens/RequestServiceScreen';
 import WorkerRegistrationScreen from '../screens/WorkerRegistrationScreen';
 import AuthScreen from '../screens/AuthScreen';
 import UserProfileScreen from '../screens/UserProfileScreen';
+import RequestsListScreen from '../screens/RequestsListScreen';
+import ChatScreen from '../screens/ChatScreen';
 import { supabase } from '../lib/supabase';
 import { Session } from '@supabase/supabase-js';
 
@@ -26,6 +28,7 @@ export type RootStackParamList = {
   WorkerProfile: { worker: any };
   RequestService: { worker_id?: string; worker_name?: string } | undefined;
   WorkerRegistration: undefined;
+  Chat: { request_id: string; receiver_id: string; chat_title: string };
 };
 
 export type MainTabParamList = {
@@ -99,7 +102,7 @@ function MainTabNavigator() {
     >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Explore" component={ExploreScreen} />
-      <Tab.Screen name="Requests" component={RequestServiceScreen} />
+      <Tab.Screen name="Requests" component={RequestsListScreen} />
       <Tab.Screen name="Profile" component={ProfileTab} />
     </Tab.Navigator>
   );
@@ -121,6 +124,7 @@ export default function AppNavigator() {
         <Stack.Screen name="WorkerProfile" component={WorkerProfileScreen} />
         <Stack.Screen name="RequestService" component={RequestServiceScreen} />
         <Stack.Screen name="WorkerRegistration" component={WorkerRegistrationScreen} />
+        <Stack.Screen name="Chat" component={ChatScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
