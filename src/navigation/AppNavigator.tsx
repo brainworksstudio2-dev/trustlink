@@ -84,9 +84,9 @@ function MainTabNavigator() {
           backgroundColor: Colors.surface,
           borderTopWidth: 1,
           borderTopColor: Colors.outlineVariant + '33', // 20% opacity
-          height: 60 + insets.bottom,
-          paddingBottom: Math.max(insets.bottom, 8),
-          paddingTop: 8,
+          height: 54 + insets.bottom,
+          paddingBottom: Math.max(insets.bottom, 4),
+          paddingTop: 4,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -4 },
           shadowOpacity: 0.04,
