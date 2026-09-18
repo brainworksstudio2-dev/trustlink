@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Animated, ImageBackground } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, Animated, ImageBackground, PanResponder } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -12,7 +12,6 @@ import { HAS_SEEN_ONBOARDING_KEY } from '../lib/onboarding';
 const SLIDES = [
   {
     image: require('../../assets/onboarding-1.jpg'),
-    badge: { icon: 'checkmark-circle' as const, text: 'SKILL VERIFIED', color: Colors.gold },
     headline: 'Find Verified Professionals',
     description:
       'Every worker on TrustLink undergoes rigorous background checks and manual skill verification to ensure your peace of mind.',
@@ -23,7 +22,6 @@ const SLIDES = [
   },
   {
     image: require('../../assets/onboarding-2.jpg'),
-    badge: { icon: 'shield-half' as const, text: 'ESCROW PROTECTED', color: Colors.secondary },
     headline: 'Secure Booking & Payments',
     description:
       'Book top-tier professionals instantly. Your funds are held in a secure escrow until the job is completed to your satisfaction.',
@@ -34,7 +32,6 @@ const SLIDES = [
   },
   {
     image: require('../../assets/onboarding-3.jpg'),
-    badge: { icon: 'heart' as const, text: '100% SATISFACTION', color: Colors.error },
     headline: 'Quality Work, Guaranteed',
     description:
       'Your peace of mind is our priority. Every project is backed by our satisfaction guarantee and round-the-clock professional support.',
@@ -56,25 +53,48 @@ export default function OnboardingScreen() {
     router.replace('/home');
   };
 
+  const goToStep = (nextStep: number, direction: 'forward' | 'back') => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: direction === 'forward' ? -20 : 20, duration: 200, useNativeDriver: true }),
+    ]).start(() => {
+      setStep(nextStep);
+      slideAnim.setValue(direction === 'forward' ? 20 : -20);
+      Animated.parallel([
+        Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.timing(slideAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
+      ]).start();
+    });
+  };
+
   const handleNext = () => {
     if (step < SLIDES.length - 1) {
-      Animated.parallel([
-        Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
-        Animated.timing(slideAnim, { toValue: -20, duration: 200, useNativeDriver: true }),
-      ]).start(() => {
-        setStep(step + 1);
-        slideAnim.setValue(20);
-        Animated.parallel([
-          Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
-          Animated.timing(slideAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
-        ]).start();
-      });
+      goToStep(step + 1, 'forward');
     } else {
       finishOnboarding();
     }
   };
 
+  const handlePrev = () => {
+    if (step > 0) {
+      goToStep(step - 1, 'back');
+    }
+  };
+
   const handleSkip = () => finishOnboarding();
+
+  const panResponder = PanResponder.create({
+    onMoveShouldSetPanResponder: (_evt, gesture) =>
+      Math.abs(gesture.dx) > 20 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+    onPanResponderRelease: (_evt, gesture) => {
+      const SWIPE_THRESHOLD = 50;
+      if (gesture.dx <= -SWIPE_THRESHOLD) {
+        handleNext();
+      } else if (gesture.dx >= SWIPE_THRESHOLD) {
+        handlePrev();
+      }
+    },
+  });
 
   const slide = SLIDES[step];
   const isLast = step === SLIDES.length - 1;
@@ -82,7 +102,7 @@ export default function OnboardingScreen() {
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
-      <ImageBackground source={slide.image} style={styles.background} resizeMode="cover">
+      <ImageBackground source={slide.image} style={styles.background} resizeMode="cover" {...panResponder.panHandlers}>
         {/* Bottom-heavy scrim so the photo reads clearly up top and text stays legible lower down */}
         <LinearGradient
           colors={['rgba(4,10,24,0.10)', 'rgba(4,10,24,0.30)', 'rgba(4,10,24,0.94)']}
@@ -98,13 +118,6 @@ export default function OnboardingScreen() {
                 <Text style={styles.skipText}>Skip</Text>
               </TouchableOpacity>
             )}
-          </View>
-
-          <View style={styles.badgeRow}>
-            <View style={[styles.floatingBadge, { borderColor: slide.badge.color + '66' }]}>
-              <Ionicons name={slide.badge.icon} size={16} color={slide.badge.color} />
-              <Text style={[styles.floatingBadgeText, { color: slide.badge.color }]}>{slide.badge.text}</Text>
-            </View>
           </View>
 
           <View style={{ flex: 1 }} />
@@ -169,25 +182,6 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.5)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 6,
-  },
-  badgeRow: {
-    marginTop: Spacing.md,
-    alignItems: 'flex-start',
-  },
-  floatingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(8,14,28,0.55)',
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 6,
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    gap: 6,
-  },
-  floatingBadgeText: {
-    ...Typography.labelSm,
-    fontWeight: '700',
-    letterSpacing: 0.5,
   },
   content: {
     paddingBottom: Spacing.xl,
