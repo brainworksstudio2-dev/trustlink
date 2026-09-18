@@ -1,17 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Alert, ScrollView, Modal, TextInput } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Modal, TextInput, Image } from 'react-native';
+import { Alert } from '../components/AppAlert';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
 import { Colors, Typography, Spacing, Radius, Shadow } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../navigation/AppNavigator';
 import { Session } from '@supabase/supabase-js';
 
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from "expo-router/react-navigation";
+import { useRouter } from 'expo-router';
 
 export default function UserProfileScreen() {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [editName, setEditName] = useState('');
@@ -82,7 +82,7 @@ export default function UserProfileScreen() {
   };
 
   const handleBecomeWorker = () => {
-    navigation.navigate('WorkerRegistration');
+    router.push('/worker-registration');
   };
 
   return (
@@ -90,7 +90,11 @@ export default function UserProfileScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <View style={styles.avatarContainer}>
-            <Ionicons name="person" size={40} color={Colors.primary} />
+            {workerProfile?.avatar_url ? (
+              <Image source={{ uri: workerProfile.avatar_url }} style={styles.avatarImage} />
+            ) : (
+              <Ionicons name="person" size={40} color={Colors.primary} />
+            )}
           </View>
           <Text style={styles.emailText}>{session?.user?.user_metadata?.full_name || 'Anonymous User'}</Text>
           <Text style={styles.memberText}>{session?.user?.email || 'Loading...'}</Text>
@@ -107,15 +111,15 @@ export default function UserProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>My Activity</Text>
           
-          <TouchableOpacity style={styles.menuItem}>
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/favorites')}>
             <View style={styles.menuIconContainer}>
               <Ionicons name="heart" size={20} color={Colors.primary} />
             </View>
             <Text style={styles.menuItemText}>Saved Favorites</Text>
             <Ionicons name="chevron-forward" size={20} color={Colors.outline} />
           </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.menuItem}>
+
+          <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/requests')}>
             <View style={styles.menuIconContainer}>
               <Ionicons name="calendar" size={20} color={Colors.primary} />
             </View>
@@ -242,7 +246,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.md,
+    overflow: 'hidden',
     ...Shadow.sm,
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
   },
   emailText: {
     ...Typography.headlineSm,

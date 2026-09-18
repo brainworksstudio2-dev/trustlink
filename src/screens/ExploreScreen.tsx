@@ -1,18 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Image, Linking, Dimensions, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Image, Linking, Dimensions, ActivityIndicator, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import MapView, { Marker, Region } from 'react-native-maps';
+import { MapLibreMap, Camera, Marker, UserLocation, MapUnavailable, isMapLibreAvailable } from '../lib/mapLibreCompat';
 import { Colors, Typography, Spacing, Radius, Shadow } from '../constants/theme';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../navigation/AppNavigator';
-
-type ExploreScreenProps = {
-  navigation: NativeStackNavigationProp<RootStackParamList, 'Main'>;
-};
+import { useRouter } from 'expo-router';
 
 import { supabase } from '../lib/supabase';
+import { haversineDistanceKm, formatDistanceKm } from '../lib/geo';
+import { MAP_STYLE_URL } from '../lib/mapStyle';
 
 // Map category -> icon name
 const CATEGORY_ICON: Record<string, string> = {
@@ -35,19 +32,13 @@ const getCategoryIcon = (category: string): string => {
   return key ? CATEGORY_ICON[key] : 'construct';
 };
 
-const generateMockLocation = (baseLat: number, baseLng: number) => {
-  const latOffset = (Math.random() - 0.5) * 0.05; // ~2.5km offset
-  const lngOffset = (Math.random() - 0.5) * 0.05;
-  return {
-    latitude: baseLat + latOffset,
-    longitude: baseLng + lngOffset,
-  };
-};
-
 const { width, height } = Dimensions.get('window');
+const DEFAULT_ZOOM = 12;
 
-export default function ExploreScreen({ navigation }: ExploreScreenProps) {
+export default function ExploreScreen() {
+  const router = useRouter();
   const [selectedFilter, setSelectedFilter] = useState('All Pros');
+  const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [workersData, setWorkersData] = useState<any[]>([]);
@@ -55,12 +46,14 @@ export default function ExploreScreen({ navigation }: ExploreScreenProps) {
   const [selectedWorker, setSelectedWorker] = useState<any | null>(null);
   const [isLoadingLocation, setIsLoadingLocation] = useState(true);
 
+  const [locationDenied, setLocationDenied] = useState(false);
+
   useEffect(() => {
     (async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
-      
-      let baseLat = 40.7128; // Default NY
-      let baseLng = -74.0060;
+
+      let baseLat = 40.7128; // Default NY, used only if permission is denied
+      let baseLng = -74.006;
 
       if (status === 'granted') {
         try {
@@ -69,43 +62,99 @@ export default function ExploreScreen({ navigation }: ExploreScreenProps) {
           baseLat = loc.coords.latitude;
           baseLng = loc.coords.longitude;
         } catch (err) {
-          console.warn("Could not get location", err);
+          console.warn('Could not get location', err);
+        }
+      } else {
+        setLocationDenied(true);
+      }
+
+      // Live-sharing workers near the customer, via the privacy-preserving
+      // RPC (approximate positions only, see supabase_worker_locations.sql).
+      const nearbyByWorkerId = new Map<string, { distance_km: number; lat: number; lng: number }>();
+      const { data: nearby, error: nearbyError } = await supabase.rpc('nearby_workers', {
+        customer_lat: baseLat,
+        customer_lng: baseLng,
+        radius_km: 100,
+      });
+      if (nearbyError) {
+        console.warn('nearby_workers RPC failed:', nearbyError.message);
+      } else if (nearby) {
+        for (const row of nearby as any[]) {
+          nearbyByWorkerId.set(row.worker_id, {
+            distance_km: row.distance_km,
+            lat: row.approx_latitude,
+            lng: row.approx_longitude,
+          });
         }
       }
 
-      // Fetch workers from Supabase
+      // Mutually hide blocked accounts — whichever direction the block was
+      // made in, neither side should see the other while browsing.
+      const blockedUserIds = new Set<string>();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session) {
+        const { data: blocks } = await supabase
+          .from('blocked_users')
+          .select('blocker_id, blocked_id')
+          .or(`blocker_id.eq.${session.user.id},blocked_id.eq.${session.user.id}`);
+        for (const b of blocks || []) {
+          blockedUserIds.add(b.blocker_id === session.user.id ? b.blocked_id : b.blocker_id);
+        }
+      }
+
+      // Full worker directory (profile details) — browsing doesn't require
+      // a worker to currently be live-sharing, same as before.
       try {
         const { data, error } = await supabase.from('workers').select('*');
         if (error) {
-          console.error("Error fetching workers:", error);
+          console.error('Error fetching workers:', error);
         } else if (data) {
-          // Generate random locations for workers that have no real coordinates
-          const updatedWorkers = data.map((w: any) => ({
-            ...w,
-            coordinate:
-              w.latitude && w.longitude
-                ? { latitude: w.latitude, longitude: w.longitude }
-                : generateMockLocation(baseLat, baseLng),
-          }));
+          const updatedWorkers = data
+            .filter((w: any) => !w.user_id || !blockedUserIds.has(w.user_id))
+            .map((w: any) => {
+              const live = nearbyByWorkerId.get(w.id);
+              let coordinate: { latitude: number; longitude: number } | null = null;
+              let distanceKm: number | null = null;
+
+              if (live) {
+                coordinate = { latitude: live.lat, longitude: live.lng };
+                distanceKm = live.distance_km;
+              } else if (w.latitude != null && w.longitude != null) {
+                // Fall back to the worker's registered service-area center.
+                coordinate = { latitude: w.latitude, longitude: w.longitude };
+                distanceKm = haversineDistanceKm(baseLat, baseLng, w.latitude, w.longitude);
+              }
+
+              return { ...w, coordinate, distanceKm };
+            })
+            .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
+
           setWorkersData(updatedWorkers);
 
           // Build dynamic filter chips from actual category values
           const categories = Array.from(
-            new Set(data.map((w: any) => w.category).filter(Boolean))
+            new Set(updatedWorkers.map((w: any) => w.category).filter(Boolean))
           ) as string[];
           setFilterChips(['All Pros', ...categories]);
         }
       } catch (err) {
-        console.error("Fetch exception:", err);
+        console.error('Fetch exception:', err);
       }
-      
+
       setIsLoadingLocation(false);
     })();
   }, []);
 
   const filteredWorkers = workersData.filter((worker) => {
-    if (selectedFilter === 'All Pros') return true;
-    return worker.category === selectedFilter;
+    if (selectedFilter !== 'All Pros' && worker.category !== selectedFilter) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      const haystack = `${worker.name || ''} ${worker.specialty || ''} ${worker.category || ''}`.toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+    return true;
   });
 
   const handleCall = (phone: string) => {
@@ -125,15 +174,22 @@ export default function ExploreScreen({ navigation }: ExploreScreenProps) {
   };
 
   const handleViewProfile = (worker: any) => {
-    navigation.navigate('WorkerProfile', { worker });
+    router.push({ pathname: '/worker/[id]', params: { id: String(worker.id), worker: JSON.stringify(worker) } });
   };
 
-  const mapRegion: Region = {
-    latitude: location ? location.coords.latitude : 40.7128,
-    longitude: location ? location.coords.longitude : -74.0060,
-    latitudeDelta: 0.0922,
-    longitudeDelta: 0.0421,
-  };
+  const mapCenter: [number, number] = selectedWorker?.coordinate
+    ? [selectedWorker.coordinate.longitude, selectedWorker.coordinate.latitude]
+    : location
+    ? [location.coords.longitude, location.coords.latitude]
+    : [-74.006, 40.7128];
+  const mapZoom = selectedWorker ? Math.max(DEFAULT_ZOOM, 14) : DEFAULT_ZOOM;
+
+  // MapLibre markers stack in render order (last drawn wins), unlike native
+  // map pins which the OS keeps un-occluded — so push the tapped worker to
+  // the end of the list to make sure it's never hidden behind a neighbor.
+  const markeredWorkers = filteredWorkers
+    .filter((w) => w.coordinate)
+    .sort((a, b) => (a.id === selectedWorker?.id ? 1 : b.id === selectedWorker?.id ? -1 : 0));
 
   return (
     <View style={styles.container}>
@@ -144,33 +200,28 @@ export default function ExploreScreen({ navigation }: ExploreScreenProps) {
               <ActivityIndicator size="large" color={Colors.primary} />
               <Text style={styles.loadingText}>Locating nearby pros...</Text>
             </View>
+          ) : !isMapLibreAvailable ? (
+            <MapUnavailable style={styles.map} />
           ) : (
-            <MapView 
-              style={styles.map} 
-              initialRegion={mapRegion}
-              showsUserLocation={true}
-              showsMyLocationButton={false}
-              onPress={() => setSelectedWorker(null)} // Click map to dismiss selected
-            >
-              {filteredWorkers.map(worker => (
+            <MapLibreMap style={styles.map} mapStyle={MAP_STYLE_URL} onPress={() => setSelectedWorker(null)}>
+              <Camera center={mapCenter} zoom={mapZoom} duration={500} />
+              {!locationDenied && <UserLocation />}
+              {markeredWorkers.map((worker) => (
                 <Marker
                   key={worker.id}
-                  coordinate={worker.coordinate}
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    setSelectedWorker(worker);
-                  }}
+                  lngLat={[worker.coordinate.longitude, worker.coordinate.latitude]}
+                  onPress={() => setSelectedWorker(worker)}
                 >
                   <View style={[styles.markerContainer, selectedWorker?.id === worker.id && styles.markerSelected]}>
-                    <Ionicons 
-                      name={getCategoryIcon(worker.category) as any} 
-                      size={18} 
-                      color={selectedWorker?.id === worker.id ? Colors.onPrimary : Colors.primary} 
+                    <Ionicons
+                      name={getCategoryIcon(worker.category) as any}
+                      size={18}
+                      color={selectedWorker?.id === worker.id ? Colors.onPrimary : Colors.primary}
                     />
                   </View>
                 </Marker>
               ))}
-            </MapView>
+            </MapLibreMap>
           )}
         </View>
       ) : (
@@ -202,7 +253,9 @@ export default function ExploreScreen({ navigation }: ExploreScreenProps) {
                           {worker.availability_text || (worker.available ? 'Available Now' : 'Unavailable')}
                         </Text>
                       </View>
-                      <Text style={styles.distanceText}>• {worker.distance}</Text>
+                      <Text style={styles.distanceText}>
+                        • {worker.distanceKm != null ? formatDistanceKm(worker.distanceKm) : 'Distance unavailable'}
+                      </Text>
                     </View>
                   </View>
                 </View>
@@ -239,6 +292,23 @@ export default function ExploreScreen({ navigation }: ExploreScreenProps) {
             <Ionicons name={viewMode === 'map' ? 'list' : 'map'} size={20} color={Colors.primary} />
             <Text style={styles.toggleBtnText}>{viewMode === 'map' ? 'List View' : 'Map View'}</Text>
           </TouchableOpacity>
+        </View>
+
+        <View style={styles.searchBar}>
+          <Ionicons name="search" size={18} color={Colors.outline} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search by name or specialty..."
+            placeholderTextColor={Colors.outline}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={18} color={Colors.outline} />
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.filterSection}>
@@ -286,7 +356,9 @@ export default function ExploreScreen({ navigation }: ExploreScreenProps) {
                   </View>
                 </View>
                 <Text style={styles.workerSpecialty}>{selectedWorker.specialty}</Text>
-                <Text style={[styles.distanceText, { marginTop: 4 }]}>{selectedWorker.distance} • {selectedWorker.rate}</Text>
+                <Text style={[styles.distanceText, { marginTop: 4 }]}>
+                  {selectedWorker.distanceKm != null ? formatDistanceKm(selectedWorker.distanceKm) : 'Distance unavailable'} • {selectedWorker.rate}
+                </Text>
               </View>
             </View>
             
@@ -362,6 +434,24 @@ const styles = StyleSheet.create({
     ...Typography.labelMd,
     color: Colors.primary,
     fontWeight: '700',
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginHorizontal: Spacing.containerMobile,
+    marginBottom: Spacing.sm,
+    backgroundColor: Colors.surfaceContainerLowest,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.md,
+    height: 44,
+    ...Shadow.sm,
+  },
+  searchInput: {
+    flex: 1,
+    ...Typography.bodySm,
+    color: Colors.onSurface,
+    height: '100%',
   },
   filterSection: {
     paddingVertical: Spacing.sm,

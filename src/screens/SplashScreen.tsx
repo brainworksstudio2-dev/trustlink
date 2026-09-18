@@ -3,16 +3,14 @@ import { StyleSheet, Text, View, Animated, Dimensions } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius } from '../constants/theme';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../navigation/AppNavigator';
-
-type SplashScreenProps = {
-  navigation: NativeStackNavigationProp<RootStackParamList, 'Splash'>;
-};
+import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { HAS_SEEN_ONBOARDING_KEY } from '../lib/onboarding';
 
 const { width } = Dimensions.get('window');
 
-export default function SplashScreen({ navigation }: SplashScreenProps) {
+export default function SplashScreen() {
+  const router = useRouter();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -37,11 +35,11 @@ export default function SplashScreen({ navigation }: SplashScreenProps) {
       toValue: 1,
       duration: 2000,
       useNativeDriver: false, // width animation requires layout driver
-    }).start(() => {
-      // Navigate to onboarding screen after loading
-      navigation.replace('Onboarding');
+    }).start(async () => {
+      const hasSeenOnboarding = await AsyncStorage.getItem(HAS_SEEN_ONBOARDING_KEY);
+      router.replace(hasSeenOnboarding ? '/home' : '/onboarding');
     });
-  }, [navigation]);
+  }, [router]);
 
   const progressBarWidth = progressAnim.interpolate({
     inputRange: [0, 1],

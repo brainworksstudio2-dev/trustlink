@@ -4,17 +4,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius } from '../constants/theme';
 import { supabase } from '../lib/supabase';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RouteProp } from '@react-navigation/native';
-import { RootStackParamList } from '../navigation/AppNavigator';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import Toast from 'react-native-toast-message';
+import { Alert } from '../components/AppAlert';
 
-type Props = {
-  navigation: NativeStackNavigationProp<RootStackParamList, 'Chat'>;
-  route: RouteProp<RootStackParamList, 'Chat'>;
-};
-
-export default function ChatScreen({ navigation, route }: Props) {
-  const { request_id, receiver_id, chat_title } = route.params;
+export default function ChatScreen() {
+  const router = useRouter();
+  const { id: request_id, receiver_id, chat_title } = useLocalSearchParams<{
+    id: string;
+    receiver_id: string;
+    chat_title: string;
+  }>();
   const [messages, setMessages] = useState<any[]>([]);
   const [inputText, setInputText] = useState('');
   const [myUserId, setMyUserId] = useState<string | null>(null);
@@ -74,8 +74,68 @@ export default function ChatScreen({ navigation, route }: Props) {
     });
 
     if (error) {
-      console.error('Error sending message:', error);
+      setInputText(messageContent);
+      Toast.show({
+        type: 'error',
+        text1: "Message didn't send",
+        text2: 'Check your connection and try again.',
+      });
     }
+  };
+
+  const handleBlock = () => {
+    Alert.alert(
+      'Block This User?',
+      "You won't be able to message each other anymore.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            if (!myUserId) return;
+            const { error } = await supabase.from('blocked_users').insert({ blocker_id: myUserId, blocked_id: receiver_id });
+            if (error) {
+              Toast.show({ type: 'error', text1: 'Could not block user', text2: 'Please try again.' });
+            } else {
+              Toast.show({ type: 'success', text1: 'User blocked' });
+              router.back();
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleReport = () => {
+    Alert.alert('Report This User?', "We'll review this conversation.", [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Report',
+        style: 'destructive',
+        onPress: async () => {
+          if (!myUserId) return;
+          const { error } = await supabase.from('user_reports').insert({
+            reporter_id: myUserId,
+            reported_user_id: receiver_id,
+            reason: 'chat_conduct',
+          });
+          Toast.show(
+            error
+              ? { type: 'error', text1: 'Could not submit report' }
+              : { type: 'success', text1: 'Report submitted', text2: 'Thanks — our team will review this.' }
+          );
+        },
+      },
+    ]);
+  };
+
+  const handleMenu = () => {
+    Alert.alert('Chat Options', undefined, [
+      { text: 'Report User', onPress: handleReport },
+      { text: 'Block User', style: 'destructive', onPress: handleBlock },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   const renderMessage = ({ item }: { item: any }) => {
@@ -101,11 +161,13 @@ export default function ChatScreen({ navigation, route }: Props) {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={24} color={Colors.onSurface} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{chat_title}</Text>
-          <View style={{ width: 40 }} />
+          <TouchableOpacity style={styles.backBtn} onPress={handleMenu}>
+            <Ionicons name="ellipsis-vertical" size={20} color={Colors.onSurface} />
+          </TouchableOpacity>
         </View>
 
         <FlatList

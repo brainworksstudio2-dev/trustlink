@@ -1,35 +1,44 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet, Text, View, ScrollView, TouchableOpacity, Image,
-  TextInput, Switch, Alert, Dimensions, ActivityIndicator,
+  TextInput, Switch, Dimensions, ActivityIndicator,
 } from 'react-native';
+import { Alert } from '../components/AppAlert';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
-import MapView, { Marker, Circle } from 'react-native-maps';
+import {
+  MapLibreMap,
+  Camera,
+  Marker,
+  GeoJSONSource,
+  Layer,
+  MapUnavailable,
+  isMapLibreAvailable,
+  type CameraRef,
+} from '../lib/mapLibreCompat';
 import { Colors, Typography, Spacing, Radius, Shadow } from '../constants/theme';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../navigation/AppNavigator';
+import { useRouter } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import Toast from 'react-native-toast-message';
-
-type WorkerRegistrationScreenProps = {
-  navigation: NativeStackNavigationProp<RootStackParamList, 'WorkerRegistration'>;
-};
+import { MAP_STYLE_URL } from '../lib/mapStyle';
+import { createCircleGeoJSON } from '../lib/geo';
 
 const { width } = Dimensions.get('window');
 
 const CLOUDINARY_CLOUD_NAME = process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME || 'demo';
 const CLOUDINARY_UPLOAD_PRESET = process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET || 'dummy_preset';
 
+// `category` must match ExploreScreen's CATEGORY_ICON keys exactly — it's
+// what drives the map pin icon and the filter chips there.
 const PROFESSIONS = [
-  { id: 'plumbing', name: 'Plumbing', icon: 'water' },
-  { id: 'electrical', name: 'Electrical', icon: 'flash' },
-  { id: 'photography', name: 'Photography', icon: 'camera' },
-  { id: 'carpentry', name: 'Carpentry', icon: 'hammer' },
-  { id: 'cleaning', name: 'Cleaning', icon: 'sparkles' },
-  { id: 'mechanics', name: 'Mechanics', icon: 'car' },
+  { id: 'plumbing', name: 'Plumbing', category: 'Plumbers', icon: 'water' },
+  { id: 'electrical', name: 'Electrical', category: 'Electricians', icon: 'flash' },
+  { id: 'photography', name: 'Photography', category: 'Photographers', icon: 'camera' },
+  { id: 'carpentry', name: 'Carpentry', category: 'Carpenters', icon: 'hammer' },
+  { id: 'cleaning', name: 'Cleaning', category: 'Cleanings', icon: 'sparkles' },
+  { id: 'mechanics', name: 'Mechanics', category: 'Mechanics', icon: 'car' },
 ];
 
 
@@ -54,7 +63,8 @@ async function uploadToCloudinary(localUri: string, folder: string = 'trustlink'
   return data.secure_url as string;
 }
 
-export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrationScreenProps) {
+export default function WorkerRegistrationScreen() {
+  const router = useRouter();
   // Existing profile (edit mode)
   const [existingWorker, setExistingWorker] = useState<any | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
@@ -64,12 +74,22 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
   // Keeps track of already-uploaded Cloudinary URL when not picking a new image
   const [existingAvatarUrl, setExistingAvatarUrl] = useState<string | null>(null);
 
+  // Portfolio photos — a mix of already-uploaded URLs (http...) and freshly
+  // picked local URIs, unified into one array; only local ones get uploaded
+  // on submit.
+  const MAX_PORTFOLIO_PHOTOS = 6;
+  const [portfolioUris, setPortfolioUris] = useState<string[]>([]);
+
   // Profession
   const [selectedProfession, setSelectedProfession] = useState('carpentry');
   const [otherSpec, setOtherSpec] = useState('');
   const [bio, setBio] = useState('');
   const [rate, setRate] = useState('');
   const [experience, setExperience] = useState('');
+
+  // Contact
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [whatsappNumber, setWhatsappNumber] = useState('');
 
   // Social links
   const [linkedin, setLinkedin] = useState('');
@@ -81,7 +101,7 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
   const [radius, setRadius] = useState(15);
 
   // Location / Map
-  const mapRef = useRef<MapView>(null);
+  const cameraRef = useRef<CameraRef>(null);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationAddress, setLocationAddress] = useState('');
   const [isFetchingLocation, setIsFetchingLocation] = useState(false);
@@ -93,6 +113,11 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
 
   // Submission
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // What to actually show in the photo preview: a freshly-picked local file
+  // takes priority, otherwise fall back to the already-uploaded photo so
+  // editing a profile doesn't look like the photo went missing.
+  const displayAvatarUri = avatarLocalUri || existingAvatarUrl;
 
   // ─── Load existing profile on mount ─────────────────────────────────────────
   useEffect(() => {
@@ -110,6 +135,7 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
         setExistingWorker(data);
         // Pre-fill all fields
         setExistingAvatarUrl(data.avatar_url || null);
+        setPortfolioUris(data.portfolio_urls || []);
         // Match profession id from specialty name
         const matchedProf = PROFESSIONS.find(
           p => p.name === data.specialty || data.specialty?.startsWith(p.name)
@@ -119,6 +145,8 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
         setBio(data.about_text || '');
         setRate(data.rate ? data.rate.replace('/hr', '') : '');
         setExperience(data.experience ? data.experience.replace(' Years', '') : '');
+        setPhoneNumber(data.phone_number || session.user.user_metadata?.phone || '');
+        setWhatsappNumber(data.whatsapp_number || '');
         setLinkedin(data.linkedin_url || '');
         setInstagram(data.instagram_url || '');
         setTiktok(data.tiktok_url || '');
@@ -128,6 +156,9 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
           setUserLocation({ latitude: data.latitude, longitude: data.longitude });
           setLocationAddress(data.location_name || '');
         }
+      } else if (session.user.user_metadata?.phone) {
+        // Fresh registration — reuse the phone number already on the account.
+        setPhoneNumber(session.user.user_metadata.phone);
       }
       setIsLoadingProfile(false);
     })();
@@ -152,6 +183,32 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
     }
   };
 
+  const addPortfolioPhotos = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Please allow access to your photo library to upload images.');
+      return;
+    }
+    const remainingSlots = MAX_PORTFOLIO_PHOTOS - portfolioUris.length;
+    if (remainingSlots <= 0) {
+      Alert.alert('Limit Reached', `You can showcase up to ${MAX_PORTFOLIO_PHOTOS} photos.`);
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      selectionLimit: remainingSlots,
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets.length > 0) {
+      setPortfolioUris((prev) => [...prev, ...result.assets.map((a) => a.uri)].slice(0, MAX_PORTFOLIO_PHOTOS));
+    }
+  };
+
+  const removePortfolioPhoto = (index: number) => {
+    setPortfolioUris((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const fetchLocation = async () => {
     setIsFetchingLocation(true);
     try {
@@ -163,7 +220,7 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const coords = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
       setUserLocation(coords);
-      mapRef.current?.animateToRegion({ ...coords, latitudeDelta: 0.15, longitudeDelta: 0.15 }, 1000);
+      cameraRef.current?.easeTo({ center: [coords.longitude, coords.latitude], zoom: 12, duration: 1000 });
 
       const addresses = await Location.reverseGeocodeAsync(coords);
       if (addresses.length > 0) {
@@ -187,6 +244,11 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
       return;
     }
 
+    if (!phoneNumber.trim()) {
+      Alert.alert('Phone Number Required', 'Clients need a number to reach you — please add at least one.');
+      return;
+    }
+
     if (!userLocation) {
       Alert.alert('Service Area Required', 'Please set your service location on the map.');
       return;
@@ -204,6 +266,12 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
         ? await uploadToCloudinary(avatarLocalUri, 'trustlink/avatars')
         : existingAvatarUrl;
 
+      // Same idea for the portfolio — only upload the entries that are still
+      // local files; anything already an https URL was uploaded previously.
+      const portfolioUrls = await Promise.all(
+        portfolioUris.map((uri) => (uri.startsWith('http') ? Promise.resolve(uri) : uploadToCloudinary(uri, 'trustlink/portfolio')))
+      );
+
       Toast.show({
         type: 'info',
         text1: isEditing ? 'Saving changes…' : 'Creating your profile…',
@@ -215,14 +283,17 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
         user_id: session.user.id,
         name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Unknown',
         specialty: otherSpec || PROFESSIONS.find(p => p.id === selectedProfession)?.name || selectedProfession,
-        category: `${PROFESSIONS.find(p => p.id === selectedProfession)?.name || selectedProfession}s`,
+        category: PROFESSIONS.find(p => p.id === selectedProfession)?.category || selectedProfession,
         avatar_url: avatarUrl,
+        portfolio_urls: portfolioUrls,
         identity_document_url: existingWorker?.identity_document_url || null,
         available: readyToWork,
         availability_text: readyToWork ? 'Available Now' : 'Currently Unavailable',
         rate: rate ? `${rate}/hr` : null,
         experience: experience ? `${experience} Years` : '0 Years',
         about_text: bio || null,
+        phone_number: phoneNumber.trim(),
+        whatsapp_number: whatsappNumber.trim() || phoneNumber.trim(),
         latitude: userLocation.latitude,
         longitude: userLocation.longitude,
         location_name: locationAddress || 'Ghana',
@@ -245,6 +316,12 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
         if (error) throw error;
       }
 
+      // Keep the account's own phone number in sync so it doesn't have to be
+      // entered twice if they ever edit their account details separately.
+      if (session.user.user_metadata?.phone !== workerData.phone_number) {
+        await supabase.auth.updateUser({ data: { phone: workerData.phone_number } });
+      }
+
       setIsSubmitting(false);
       Toast.show({
         type: 'success',
@@ -253,7 +330,7 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
         position: 'top',
         visibilityTime: 4000,
       });
-      setTimeout(() => navigation.navigate('Main'), 2000);
+      setTimeout(() => router.navigate('/home'), 2000);
     } catch (err: any) {
       setIsSubmitting(false);
       Alert.alert(
@@ -269,7 +346,7 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
     <SafeAreaView style={styles.safeArea}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color={Colors.onSurface} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{existingWorker ? 'Edit Profile' : 'Worker Portal'}</Text>
@@ -291,21 +368,66 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
             onPress={() => pickImage(setAvatarLocalUri)}
             activeOpacity={0.9}
           >
-            {avatarLocalUri ? (
-              <Image source={{ uri: avatarLocalUri }} style={styles.photoAvatar} />
+            {displayAvatarUri ? (
+              <Image source={{ uri: displayAvatarUri }} style={styles.photoAvatar} />
             ) : (
               <View style={styles.photoPlaceholder}>
                 <Ionicons name="camera-outline" size={36} color={Colors.outline} />
                 <Text style={styles.photoPlaceholderText}>Tap to upload your photo</Text>
               </View>
             )}
-            {avatarLocalUri && (
+            {!!displayAvatarUri && (
               <View style={styles.editBadge}>
                 <Ionicons name="pencil" size={14} color={Colors.onPrimary} />
               </View>
             )}
           </TouchableOpacity>
-          <Text style={styles.photoTipText}>Clear, well-lit face photos increase client trust by 80%.</Text>
+          <Text style={styles.photoTipText}>
+            {existingAvatarUrl && !avatarLocalUri
+              ? 'Using your existing profile photo. Tap to replace it.'
+              : 'Clear, well-lit face photos increase client trust by 80%.'}
+          </Text>
+        </View>
+
+        {/* ── Contact Numbers ── */}
+        <View style={styles.sectionCard}>
+          <SectionHeader icon="call" title="Contact Number" />
+          <Text style={styles.sectionDesc}>This is how clients reach you to call or book. Add a WhatsApp number too if it's different.</Text>
+          <FormField
+            label="Phone Number"
+            value={phoneNumber}
+            onChangeText={setPhoneNumber}
+            placeholder="e.g. +233 55 123 4567"
+            keyboardType="phone-pad"
+          />
+          <FormField
+            label="WhatsApp Number (optional — same as phone if left blank)"
+            value={whatsappNumber}
+            onChangeText={setWhatsappNumber}
+            placeholder="e.g. +233 55 123 4567"
+            keyboardType="phone-pad"
+          />
+        </View>
+
+        {/* ── Portfolio ── */}
+        <View style={styles.sectionCard}>
+          <SectionHeader icon="images" title="Portfolio (Optional)" />
+          <Text style={styles.sectionDesc}>Show off real photos of your past work. Clients trust profiles with real examples.</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.portfolioScroll}>
+            {portfolioUris.map((uri, index) => (
+              <View key={uri + index} style={styles.portfolioThumbWrap}>
+                <Image source={{ uri }} style={styles.portfolioThumb} />
+                <TouchableOpacity style={styles.portfolioRemoveBtn} onPress={() => removePortfolioPhoto(index)}>
+                  <Ionicons name="close" size={12} color={Colors.onPrimary} />
+                </TouchableOpacity>
+              </View>
+            ))}
+            {portfolioUris.length < MAX_PORTFOLIO_PHOTOS && (
+              <TouchableOpacity style={styles.portfolioAddTile} onPress={addPortfolioPhotos}>
+                <Ionicons name="add" size={24} color={Colors.outline} />
+              </TouchableOpacity>
+            )}
+          </ScrollView>
         </View>
 
         {/* ── Step 2: Profession ── */}
@@ -339,19 +461,18 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
           <SectionHeader icon="map" title="Service Area" />
           <Text style={styles.sectionDesc}>Tap the button below to set your work location. Clients near you will see your profile.</Text>
 
-          {userLocation ? (
+          {userLocation && !isMapLibreAvailable ? (
             <View style={styles.mapContainer}>
-              <MapView
-                ref={mapRef}
+              <MapUnavailable style={styles.map} />
+            </View>
+          ) : userLocation ? (
+            <View style={styles.mapContainer}>
+              <MapLibreMap
                 style={styles.map}
-                initialRegion={{
-                  latitude: userLocation.latitude,
-                  longitude: userLocation.longitude,
-                  latitudeDelta: 0.15,
-                  longitudeDelta: 0.15,
-                }}
-                onPress={(e) => {
-                  const coords = e.nativeEvent.coordinate;
+                mapStyle={MAP_STYLE_URL}
+                onPress={(e: any) => {
+                  const [lng, lat] = e.nativeEvent.lngLat;
+                  const coords = { latitude: lat, longitude: lng };
                   setUserLocation(coords);
                   Location.reverseGeocodeAsync(coords).then(addresses => {
                     if (addresses.length > 0) {
@@ -361,15 +482,26 @@ export default function WorkerRegistrationScreen({ navigation }: WorkerRegistrat
                   });
                 }}
               >
-                <Marker coordinate={userLocation} title="My Location" />
-                <Circle
-                  center={userLocation}
-                  radius={radius * 1609.34} // miles to meters
-                  fillColor={Colors.primary + '15'}
-                  strokeColor={Colors.primary + '60'}
-                  strokeWidth={2}
-                />
-              </MapView>
+                <Camera ref={cameraRef} initialViewState={{ center: [userLocation.longitude, userLocation.latitude], zoom: 12 }} />
+                <Marker lngLat={[userLocation.longitude, userLocation.latitude]}>
+                  <View style={styles.myLocationDot} />
+                </Marker>
+                <GeoJSONSource
+                  id="serviceRadiusSource"
+                  data={createCircleGeoJSON(userLocation, radius * 1609.34)}
+                >
+                  <Layer
+                    id="serviceRadiusFill"
+                    type="fill"
+                    paint={{ 'fill-color': Colors.primary, 'fill-opacity': 0.08 }}
+                  />
+                  <Layer
+                    id="serviceRadiusOutline"
+                    type="line"
+                    paint={{ 'line-color': Colors.primary, 'line-width': 2, 'line-opacity': 0.6 }}
+                  />
+                </GeoJSONSource>
+              </MapLibreMap>
             </View>
           ) : (
             <View style={styles.mapPlaceholder}>
@@ -571,6 +703,20 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full, alignItems: 'center', justifyContent: 'center',
   },
   photoTipText: { ...Typography.bodySm, color: Colors.outline, textAlign: 'center', marginTop: 4 },
+  // Portfolio
+  portfolioScroll: { gap: Spacing.sm, paddingVertical: 4 },
+  portfolioThumbWrap: { position: 'relative' },
+  portfolioThumb: { width: 84, height: 84, borderRadius: Radius.md, backgroundColor: Colors.surfaceContainerLow },
+  portfolioRemoveBtn: {
+    position: 'absolute', top: -6, right: -6,
+    width: 20, height: 20, borderRadius: Radius.full,
+    backgroundColor: Colors.error, alignItems: 'center', justifyContent: 'center',
+  },
+  portfolioAddTile: {
+    width: 84, height: 84, borderRadius: Radius.md,
+    borderWidth: 2, borderStyle: 'dashed', borderColor: Colors.outlineVariant,
+    backgroundColor: Colors.surfaceContainerLow, alignItems: 'center', justifyContent: 'center',
+  },
   // Profession
   professionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginBottom: Spacing.md },
   professionBtn: {
@@ -591,6 +737,15 @@ const styles = StyleSheet.create({
   // Map
   mapContainer: { borderRadius: Radius.lg, overflow: 'hidden', marginBottom: Spacing.md },
   map: { width: '100%', height: 220 },
+  myLocationDot: {
+    width: 18,
+    height: 18,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.primary,
+    borderWidth: 3,
+    borderColor: Colors.onPrimary,
+    ...Shadow.sm,
+  },
   mapPlaceholder: {
     height: 180, borderRadius: Radius.lg, borderWidth: 1, borderStyle: 'dashed',
     borderColor: Colors.outlineVariant, backgroundColor: Colors.surfaceContainerLow,

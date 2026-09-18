@@ -1,388 +1,247 @@
 import React, { useState, useRef } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Animated, Dimensions, Image } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, Animated, ImageBackground } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '../constants/theme';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../navigation/AppNavigator';
+import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { HAS_SEEN_ONBOARDING_KEY } from '../lib/onboarding';
 
-type OnboardingScreenProps = {
-  navigation: NativeStackNavigationProp<RootStackParamList, 'Onboarding'>;
-};
+const SLIDES = [
+  {
+    image: require('../../assets/onboarding-1.jpg'),
+    badge: { icon: 'checkmark-circle' as const, text: 'SKILL VERIFIED', color: Colors.gold },
+    headline: 'Find Verified Professionals',
+    description:
+      'Every worker on TrustLink undergoes rigorous background checks and manual skill verification to ensure your peace of mind.',
+    bullets: [
+      { icon: 'shield-checkmark' as const, title: 'Identity Clear', desc: 'Full ID and background check completed.' },
+      { icon: 'construct' as const, title: 'Proven Expertise', desc: 'Credentials and past work reviewed by pros.' },
+    ],
+  },
+  {
+    image: require('../../assets/onboarding-2.jpg'),
+    badge: { icon: 'shield-half' as const, text: 'ESCROW PROTECTED', color: Colors.secondary },
+    headline: 'Secure Booking & Payments',
+    description:
+      'Book top-tier professionals instantly. Your funds are held in a secure escrow until the job is completed to your satisfaction.',
+    bullets: [
+      { icon: 'wallet' as const, title: 'Escrow Protected', desc: 'Money safely held until work is signed off.' },
+      { icon: 'calendar' as const, title: 'Instant Booking', desc: 'Hire immediately without long discussions.' },
+    ],
+  },
+  {
+    image: require('../../assets/onboarding-3.jpg'),
+    badge: { icon: 'heart' as const, text: '100% SATISFACTION', color: Colors.error },
+    headline: 'Quality Work, Guaranteed',
+    description:
+      'Your peace of mind is our priority. Every project is backed by our satisfaction guarantee and round-the-clock professional support.',
+    bullets: [
+      { icon: 'checkmark-circle' as const, title: 'Satisfaction Guarantee', desc: "Not happy? We'll make it right or refund." },
+      { icon: 'headset' as const, title: '24/7 Concierge Support', desc: 'Dedicated team always ready to help you.' },
+    ],
+  },
+];
 
-const { width } = Dimensions.get('window');
-
-export default function OnboardingScreen({ navigation }: OnboardingScreenProps) {
-  const [step, setStep] = useState(1);
+export default function OnboardingScreen() {
+  const router = useRouter();
+  const [step, setStep] = useState(0);
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
 
+  const finishOnboarding = async () => {
+    await AsyncStorage.setItem(HAS_SEEN_ONBOARDING_KEY, 'true');
+    router.replace('/home');
+  };
+
   const handleNext = () => {
-    if (step < 3) {
-      // Transition out
+    if (step < SLIDES.length - 1) {
       Animated.parallel([
         Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
         Animated.timing(slideAnim, { toValue: -20, duration: 200, useNativeDriver: true }),
       ]).start(() => {
         setStep(step + 1);
         slideAnim.setValue(20);
-        // Transition in
         Animated.parallel([
           Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
           Animated.timing(slideAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
         ]).start();
       });
     } else {
-      // Navigate to Main application (tab stack)
-      navigation.replace('Main');
+      finishOnboarding();
     }
   };
 
-  const handleSkip = () => {
-    navigation.replace('Main');
-  };
+  const handleSkip = () => finishOnboarding();
 
-  const renderVisual = () => {
-    if (step === 1) {
-      return (
-        <View style={styles.imagePlaceholder}>
-          <Ionicons name="people" size={100} color={Colors.primary} />
-          {/* Floating Verification Badge */}
-          <View style={styles.floatingBadge}>
-            <Ionicons name="checkmark-circle" size={18} color={Colors.gold} />
-            <Text style={styles.floatingBadgeText}>SKILL VERIFIED</Text>
-          </View>
-        </View>
-      );
-    } else if (step === 2) {
-      return (
-        <View style={styles.imagePlaceholder}>
-          <Ionicons name="card" size={100} color={Colors.primary} />
-          {/* Floating Escrow Badge */}
-          <View style={[styles.floatingBadge, styles.bottomFloatingBadge]}>
-            <Ionicons name="shield-half" size={18} color={Colors.secondary} />
-            <Text style={[styles.floatingBadgeText, { color: Colors.secondary }]}>ESCROW PROTECTED</Text>
-          </View>
-        </View>
-      );
-    } else {
-      return (
-        <View style={styles.imagePlaceholder}>
-          <Ionicons name="ribbon" size={100} color={Colors.primary} />
-          {/* Floating Guarantee Badge */}
-          <View style={styles.floatingBadge}>
-            <Ionicons name="heart" size={18} color={Colors.error} />
-            <Text style={[styles.floatingBadgeText, { color: Colors.error }]}>100% SATISFACTION</Text>
-          </View>
-        </View>
-      );
-    }
-  };
-
-  const renderContent = () => {
-    if (step === 1) {
-      return (
-        <>
-          <Text style={styles.headline}>Find Verified Professionals</Text>
-          <Text style={styles.description}>
-            Every worker on TrustLink undergoes rigorous background checks and manual skill verification to ensure your peace of mind.
-          </Text>
-
-          {/* Bento List */}
-          <View style={styles.bentoContainer}>
-            <View style={styles.bentoItem}>
-              <View style={styles.iconBoxPrimary}>
-                <Ionicons name="shield-checkmark" size={20} color={Colors.primary} />
-              </View>
-              <View style={styles.bentoText}>
-                <Text style={styles.bentoTitle}>Identity Clear</Text>
-                <Text style={styles.bentoDesc}>Full ID and background check completed.</Text>
-              </View>
-            </View>
-
-            <View style={styles.bentoItem}>
-              <View style={styles.iconBoxSecondary}>
-                <Ionicons name="construct" size={20} color={Colors.secondary} />
-              </View>
-              <View style={styles.bentoText}>
-                <Text style={styles.bentoTitle}>Proven Expertise</Text>
-                <Text style={styles.bentoDesc}>Credentials and past work reviewed by pros.</Text>
-              </View>
-            </View>
-          </View>
-        </>
-      );
-    } else if (step === 2) {
-      return (
-        <>
-          <Text style={styles.headline}>Secure Booking & Payments</Text>
-          <Text style={styles.description}>
-            Book top-tier professionals instantly. Your funds are held in a secure escrow until the job is completed to your satisfaction.
-          </Text>
-
-          {/* Bento List */}
-          <View style={styles.bentoContainer}>
-            <View style={styles.bentoItem}>
-              <View style={styles.iconBoxSecondary}>
-                <Ionicons name="wallet" size={20} color={Colors.secondary} />
-              </View>
-              <View style={styles.bentoText}>
-                <Text style={styles.bentoTitle}>Escrow Protected</Text>
-                <Text style={styles.bentoDesc}>Money safely held until work is signed off.</Text>
-              </View>
-            </View>
-
-            <View style={styles.bentoItem}>
-              <View style={styles.iconBoxPrimary}>
-                <Ionicons name="calendar" size={20} color={Colors.primary} />
-              </View>
-              <View style={styles.bentoText}>
-                <Text style={styles.bentoTitle}>Instant Booking</Text>
-                <Text style={styles.bentoDesc}>Hire immediately without long discussions.</Text>
-              </View>
-            </View>
-          </View>
-        </>
-      );
-    } else {
-      return (
-        <>
-          <Text style={styles.headline}>Quality Work, Guaranteed</Text>
-          <Text style={styles.description}>
-            Your peace of mind is our priority. Every project is backed by our satisfaction guarantee and round-the-clock professional support.
-          </Text>
-
-          {/* Bento List */}
-          <View style={styles.bentoContainer}>
-            <View style={styles.bentoItem}>
-              <View style={styles.iconBoxPrimary}>
-                <Ionicons name="checkmark-circle" size={20} color={Colors.primary} />
-              </View>
-              <View style={styles.bentoText}>
-                <Text style={styles.bentoTitle}>Satisfaction Guarantee</Text>
-                <Text style={styles.bentoDesc}>Not happy? We'll make it right or refund.</Text>
-              </View>
-            </View>
-
-            <View style={styles.bentoItem}>
-              <View style={styles.iconBoxSecondary}>
-                <Ionicons name="headset" size={20} color={Colors.secondary} />
-              </View>
-              <View style={styles.bentoText}>
-                <Text style={styles.bentoTitle}>24/7 Concierge Support</Text>
-                <Text style={styles.bentoDesc}>Dedicated team always ready to help you.</Text>
-              </View>
-            </View>
-          </View>
-        </>
-      );
-    }
-  };
+  const slide = SLIDES[step];
+  const isLast = step === SLIDES.length - 1;
 
   return (
     <View style={styles.container}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
+      <ImageBackground source={slide.image} style={styles.background} resizeMode="cover">
+        {/* Bottom-heavy scrim so the photo reads clearly up top and text stays legible lower down */}
+        <LinearGradient
+          colors={['rgba(4,10,24,0.10)', 'rgba(4,10,24,0.30)', 'rgba(4,10,24,0.94)']}
+          locations={[0, 0.45, 0.82]}
+          style={StyleSheet.absoluteFill}
+        />
 
-      {/* Header bar */}
-      <View style={styles.header}>
-        <Text style={styles.headerBrand}>TrustLink</Text>
-        {step < 3 && (
-          <TouchableOpacity onPress={handleSkip}>
-            <Text style={styles.skipText}>Skip</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+        <SafeAreaView style={styles.safeArea}>
+          <View style={styles.header}>
+            <Text style={styles.headerBrand}>TrustLink</Text>
+            {!isLast && (
+              <TouchableOpacity onPress={handleSkip} hitSlop={10}>
+                <Text style={styles.skipText}>Skip</Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
-      {/* Main Slide Content */}
-      <Animated.View style={[styles.mainContent, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-        {/* Visual Element */}
-        <View style={styles.visualContainer}>
-          {renderVisual()}
-        </View>
+          <View style={styles.badgeRow}>
+            <View style={[styles.floatingBadge, { borderColor: slide.badge.color + '66' }]}>
+              <Ionicons name={slide.badge.icon} size={16} color={slide.badge.color} />
+              <Text style={[styles.floatingBadgeText, { color: slide.badge.color }]}>{slide.badge.text}</Text>
+            </View>
+          </View>
 
-        {/* Text and Bento Details */}
-        <View style={styles.textContainer}>
-          {renderContent()}
-        </View>
-      </Animated.View>
+          <View style={{ flex: 1 }} />
 
-      {/* Sticky Bottom Actions */}
-      <View style={styles.footer}>
-        {/* Progress dots */}
-        <View style={styles.dotsRow}>
-          <View style={[styles.dot, step === 1 ? styles.dotActive : null]} />
-          <View style={[styles.dot, step === 2 ? styles.dotActive : null]} />
-          <View style={[styles.dot, step === 3 ? styles.dotActive : null]} />
-        </View>
+          <Animated.View style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+            <Text style={styles.headline}>{slide.headline}</Text>
+            <Text style={styles.description}>{slide.description}</Text>
 
-        {/* Call to action button */}
-        <TouchableOpacity style={styles.button} onPress={handleNext} activeOpacity={0.9}>
-          <Text style={styles.buttonText}>{step === 3 ? 'Get Started' : 'Next'}</Text>
-          <Ionicons name="arrow-forward" size={18} color={Colors.onPrimary} />
-        </TouchableOpacity>
+            <View style={styles.bentoContainer}>
+              {slide.bullets.map((b) => (
+                <View key={b.title} style={styles.bentoItem}>
+                  <View style={styles.iconBox}>
+                    <Ionicons name={b.icon} size={18} color={Colors.onPrimary} />
+                  </View>
+                  <View style={styles.bentoText}>
+                    <Text style={styles.bentoTitle}>{b.title}</Text>
+                    <Text style={styles.bentoDesc}>{b.desc}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
 
-        <Text style={styles.stepText}>Step {step} of 3 • {step === 3 ? 'Finalize your experience' : 'Learn about our trust system'}</Text>
-      </View>
+            <View style={styles.dotsRow}>
+              {SLIDES.map((_, i) => (
+                <View key={i} style={[styles.dot, step === i && styles.dotActive]} />
+              ))}
+            </View>
+
+            <TouchableOpacity style={styles.button} onPress={handleNext} activeOpacity={0.9}>
+              <Text style={styles.buttonText}>{isLast ? 'Get Started' : 'Next'}</Text>
+              <Ionicons name="arrow-forward" size={18} color={Colors.onPrimaryFixed} />
+            </TouchableOpacity>
+          </Animated.View>
+        </SafeAreaView>
+      </ImageBackground>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-    paddingTop: 50,
-  },
+  container: { flex: 1, backgroundColor: '#000' },
+  background: { flex: 1 },
+  safeArea: { flex: 1, paddingHorizontal: Spacing.containerMobile },
   header: {
     height: 56,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing.containerMobile,
   },
   headerBrand: {
     ...Typography.headlineSm,
-    color: Colors.primary,
+    color: Colors.onPrimary,
     fontWeight: '800',
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
   skipText: {
     ...Typography.labelMd,
-    color: Colors.onSurfaceVariant,
+    color: Colors.onPrimary,
+    opacity: 0.85,
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
-  mainContent: {
-    flex: 1,
-    paddingHorizontal: Spacing.containerMobile,
-    alignItems: 'center',
-  },
-  visualContainer: {
-    width: '100%',
-    height: width * 0.65,
-    justifyContent: 'center',
-    alignItems: 'center',
+  badgeRow: {
     marginTop: Spacing.md,
-    marginBottom: Spacing.lg,
-  },
-  imagePlaceholder: {
-    width: '90%',
-    height: '100%',
-    borderRadius: Radius.xxl,
-    backgroundColor: Colors.surfaceContainerLow,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.outlineVariant + '33',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
+    alignItems: 'flex-start',
   },
   floatingBadge: {
-    position: 'absolute',
-    bottom: Spacing.md,
-    left: Spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surfaceContainerLowest,
+    backgroundColor: 'rgba(8,14,28,0.55)',
     paddingHorizontal: Spacing.sm,
     paddingVertical: 6,
     borderRadius: Radius.full,
     borderWidth: 1,
-    borderColor: Colors.outlineVariant + '44',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  bottomFloatingBadge: {
-    bottom: Spacing.md,
-    right: Spacing.md,
-    left: undefined,
+    gap: 6,
   },
   floatingBadgeText: {
     ...Typography.labelSm,
-    color: Colors.gold,
     fontWeight: '700',
-    marginLeft: 6,
+    letterSpacing: 0.5,
   },
-  textContainer: {
-    width: '100%',
-    alignItems: 'center',
+  content: {
+    paddingBottom: Spacing.xl,
   },
   headline: {
     ...Typography.headlineMd,
-    color: Colors.onBackground,
-    textAlign: 'center',
-    fontWeight: '700',
+    color: Colors.onPrimary,
+    fontWeight: '800',
     marginBottom: Spacing.sm,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 10,
   },
   description: {
     ...Typography.bodySm,
-    color: Colors.onSurfaceVariant,
-    textAlign: 'center',
+    color: 'rgba(255,255,255,0.85)',
     lineHeight: 22,
-    opacity: 0.8,
-    paddingHorizontal: Spacing.sm,
     marginBottom: Spacing.lg,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
   },
   bentoContainer: {
-    width: '100%',
     gap: Spacing.sm,
+    marginBottom: Spacing.lg,
   },
   bentoItem: {
     flexDirection: 'row',
-    backgroundColor: Colors.surfaceContainerLowest,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     padding: Spacing.md,
     borderRadius: Radius.lg,
     borderWidth: 1,
-    borderColor: Colors.outlineVariant + '22',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    elevation: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
   },
-  iconBoxPrimary: {
+  iconBox: {
     width: 36,
     height: 36,
     borderRadius: Radius.md,
-    backgroundColor: Colors.primary + '10',
+    backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Spacing.md,
   },
-  iconBoxSecondary: {
-    width: 36,
-    height: 36,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.secondary + '10',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.md,
-  },
-  bentoText: {
-    flex: 1,
-  },
+  bentoText: { flex: 1 },
   bentoTitle: {
     ...Typography.labelMd,
-    color: Colors.onSurface,
+    color: Colors.onPrimary,
     fontWeight: '700',
   },
   bentoDesc: {
     ...Typography.bodySm,
-    color: Colors.outline,
+    color: 'rgba(255,255,255,0.75)',
     marginTop: 2,
-  },
-  footer: {
-    paddingHorizontal: Spacing.containerMobile,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.xl,
-    backgroundColor: Colors.surface,
-    borderTopWidth: 1,
-    borderTopColor: Colors.outlineVariant + '15',
-    alignItems: 'center',
   },
   dotsRow: {
     flexDirection: 'row',
@@ -395,35 +254,30 @@ const styles = StyleSheet.create({
     height: 6,
     width: 6,
     borderRadius: Radius.full,
-    backgroundColor: Colors.outlineVariant,
+    backgroundColor: 'rgba(255,255,255,0.35)',
   },
   dotActive: {
     width: 20,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.gold,
   },
   button: {
     width: '100%',
     height: 54,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.gold,
     borderRadius: Radius.xl,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.xs,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
-    marginBottom: Spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 6,
   },
   buttonText: {
     ...Typography.labelMd,
-    color: Colors.onPrimary,
+    color: Colors.onPrimaryFixed,
     fontWeight: '700',
-  },
-  stepText: {
-    ...Typography.labelSm,
-    color: Colors.outline,
   },
 });

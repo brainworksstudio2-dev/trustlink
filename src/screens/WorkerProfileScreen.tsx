@@ -1,26 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Image, Dimensions, Linking, Alert, Modal, TextInput, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Image, Dimensions, Linking, Modal, TextInput, ActivityIndicator, Share } from 'react-native';
+import { Alert } from '../components/AppAlert';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius, Shadow } from '../constants/theme';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RouteProp } from '@react-navigation/native';
-import { RootStackParamList } from '../navigation/AppNavigator';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { Session } from '@supabase/supabase-js';
 
-type WorkerProfileScreenProps = {
-  navigation: NativeStackNavigationProp<RootStackParamList, 'WorkerProfile'>;
-  route: RouteProp<RootStackParamList, 'WorkerProfile'>;
-};
-
 const { width } = Dimensions.get('window');
-
-const PORTFOLIO_IMAGES = [
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuDIf0WfuG6b4CLuCkzekld1mh32Il9Gh0zEeDKHpVmwbWovpsEZDVXAQD56FB0c2r4S9We6aG8eG2kki_sphanDatoW8bg3PcotuPpT3WYC8U6EBO-bhmN-HkIzB7qy3wsuGoMb-o7Zf5J_aUKnQkNzbWWif2Xeb2DTewMm6UvewreNgfRdUXl7mDjAoCpAihIV2Nv-8DHNeCQLHhWegoMtvYjpR3xCwHqTN0wDs0PtoDGNa-FrrtnDIMdDKi2L9-RrB-ie_-L9AEE',
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuCwyR9BPTcC4jiDi2D6-hZrDu5QxuhY_VJi5xaiHofrPcyl_3c5DYMnma4EmlsCKx8MK2gEvrcKD8GDeWFc6lalxtNXLrDzwyC-C0Zp2fCVc51auIEvVLI_7BoqlcbGn0eoD6T4r5GUXaqjNh3FmMDaRit1Pu2fW3FnLF7E3mNLsi9zFqLhHGCOj9xfEy7mnjk8agaLPkIDViA2StBB7emMJ0Z0dJ1oQHUtBkGWa6J6KMbnjtPq4FQp9sZKyzv3NktLYw6WTlJrMS0',
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuDXbE8RwO-cLP1TNqz8b7QLa8jhBE2-pyfKq-AoQaHrCH4-VSzCb-zcNCIzh3jfOPEqg92sFq7pKcZqRAeggqnndRlx8oBw0jz28DV5Jd5ma4i9zBFJvcdhn_qUw2eZegjqFb8Q1wyu_pN3vQZ1jRUoPsiM10zBDV1vsjrvBYhwGVeoykOZ4Yf3q23MEXEKkH-Bf92WQnprmyMswm1IFxMpT6NxyFgJx4vwMZdLr7iix-gM2AOmn8dbpsMyZ7YF1uCvzXNTcvaMaqA',
-];
 
 const REVIEWS = [
   {
@@ -41,8 +29,10 @@ const REVIEWS = [
   },
 ];
 
-export default function WorkerProfileScreen({ navigation, route }: WorkerProfileScreenProps) {
-  const { worker } = route.params;
+export default function WorkerProfileScreen() {
+  const router = useRouter();
+  const { worker: workerParam } = useLocalSearchParams<{ id: string; worker: string }>();
+  const worker = JSON.parse(workerParam);
 
   const [session, setSession] = useState<Session | null>(null);
   const [reviews, setReviews] = useState<any[]>([]);
@@ -50,11 +40,105 @@ export default function WorkerProfileScreen({ navigation, route }: WorkerProfile
   const [rating, setRating] = useState(5);
   const [reviewContent, setReviewContent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isFavorited, setIsFavorited] = useState(false);
+  const [canReview, setCanReview] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) {
+        supabase
+          .from('favorites')
+          .select('worker_id')
+          .eq('user_id', session.user.id)
+          .eq('worker_id', worker.id)
+          .maybeSingle()
+          .then(({ data }) => setIsFavorited(!!data));
+
+        supabase
+          .from('service_requests')
+          .select('id')
+          .eq('user_id', session.user.id)
+          .eq('worker_id', worker.id)
+          .eq('status', 'completed')
+          .limit(1)
+          .then(({ data }) => setCanReview(!!data && data.length > 0));
+
+        if (worker.user_id) {
+          supabase
+            .from('blocked_users')
+            .select('blocker_id')
+            .or(
+              `and(blocker_id.eq.${session.user.id},blocked_id.eq.${worker.user_id}),and(blocker_id.eq.${worker.user_id},blocked_id.eq.${session.user.id})`
+            )
+            .then(({ data }) => setIsBlocked(!!data && data.length > 0));
+        }
+      }
+    });
     fetchReviews();
   }, []);
+
+  const toggleFavorite = async () => {
+    if (!session) {
+      Alert.alert('Sign In Required', 'Sign in to save workers to your favorites.');
+      return;
+    }
+    if (isFavorited) {
+      setIsFavorited(false);
+      await supabase.from('favorites').delete().eq('user_id', session.user.id).eq('worker_id', worker.id);
+    } else {
+      setIsFavorited(true);
+      await supabase.from('favorites').insert({ user_id: session.user.id, worker_id: worker.id });
+    }
+  };
+
+  const handleShare = () => {
+    Share.share({
+      message: `Check out ${worker.name} (${worker.specialty}) on TrustLink.`,
+    }).catch(() => {});
+  };
+
+  const handleReport = () => {
+    if (!session) {
+      Alert.alert('Sign In Required', 'Sign in to report a profile.');
+      return;
+    }
+    Alert.alert(
+      'Report This Profile',
+      'What\'s the issue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Inappropriate content',
+          onPress: () => submitReport('inappropriate_content'),
+        },
+        {
+          text: 'Suspected scam',
+          onPress: () => submitReport('suspected_scam'),
+        },
+        {
+          text: 'Other',
+          onPress: () => submitReport('other'),
+        },
+      ]
+    );
+  };
+
+  const submitReport = async (reason: string) => {
+    if (!session) return;
+    const { error } = await supabase.from('user_reports').insert({
+      reporter_id: session.user.id,
+      reported_worker_id: worker.id,
+      reported_user_id: worker.user_id || null,
+      reason,
+    });
+    if (error) {
+      Alert.alert('Error', 'Could not submit report. Please try again.');
+    } else {
+      Alert.alert('Report Submitted', 'Thanks — our team will review this profile.');
+    }
+  };
 
   const fetchReviews = async () => {
     const { data, error } = await supabase
@@ -69,6 +153,11 @@ export default function WorkerProfileScreen({ navigation, route }: WorkerProfile
   const handleReviewSubmit = async () => {
     if (!session) {
       Alert.alert('Sign In Required', 'You must be signed in to leave a review.');
+      setIsModalVisible(false);
+      return;
+    }
+    if (!canReview) {
+      Alert.alert('Complete a Booking First', 'You can leave a review once this professional has completed a job for you.');
       setIsModalVisible(false);
       return;
     }
@@ -103,22 +192,34 @@ export default function WorkerProfileScreen({ navigation, route }: WorkerProfile
   const totalReviews = reviews.length > 0 ? reviews.length : worker.reviews;
 
   const handleCall = () => {
+    if (isBlocked) {
+      Alert.alert('Unavailable', 'You can no longer contact this professional.');
+      return;
+    }
     Linking.openURL(`tel:${worker.phone_number || '1234567890'}`);
   };
 
   const handleChat = () => {
+    if (isBlocked) {
+      Alert.alert('Unavailable', 'You can no longer contact this professional.');
+      return;
+    }
     Linking.openURL(`https://wa.me/${worker.whatsapp_number || '1234567890'}`);
   };
 
   const handleBook = () => {
+    if (isBlocked) {
+      Alert.alert('Unavailable', 'You can no longer book this professional.');
+      return;
+    }
     Alert.alert(
       'Secure Escrow Booking',
       `Would you like to book ${worker.name} starting at ${worker.rate}? Under TrustLink protocol, your funds are safely held in escrow until completion.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
-          text: 'Book Now', 
-          onPress: () => navigation.navigate('RequestService', { worker_id: worker.id, worker_name: worker.name }) 
+          text: 'Book Now',
+          onPress: () => router.push({ pathname: '/request-service', params: { worker_id: worker.id, worker_name: worker.name } })
         }
       ]
     );
@@ -128,13 +229,21 @@ export default function WorkerProfileScreen({ navigation, route }: WorkerProfile
     <SafeAreaView style={styles.safeArea}>
       {/* Top Floating App Bar */}
       <View style={styles.topAppBar}>
-        <TouchableOpacity style={styles.iconCircle} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={styles.iconCircle} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={20} color={Colors.onSurface} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Professional Profile</Text>
-        <TouchableOpacity style={styles.iconCircle}>
-          <Ionicons name="share-social" size={20} color={Colors.onSurface} />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.iconCircle} onPress={toggleFavorite}>
+            <Ionicons name={isFavorited ? 'heart' : 'heart-outline'} size={20} color={isFavorited ? Colors.error : Colors.onSurface} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.iconCircle} onPress={handleShare}>
+            <Ionicons name="share-social" size={20} color={Colors.onSurface} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.iconCircle} onPress={handleReport}>
+            <Ionicons name="flag-outline" size={20} color={Colors.onSurface} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
@@ -244,21 +353,20 @@ export default function WorkerProfileScreen({ navigation, route }: WorkerProfile
         </View>
 
         {/* Portfolio Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Portfolio</Text>
-            <TouchableOpacity>
-              <Text style={styles.viewAllText}>View All</Text>
-            </TouchableOpacity>
+        {worker.portfolio_urls && worker.portfolio_urls.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Portfolio</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.portfolioScroll}>
+              {worker.portfolio_urls.map((uri: string, index: number) => (
+                <View key={index} style={styles.portfolioCard}>
+                  <Image source={{ uri }} style={styles.portfolioImage} />
+                </View>
+              ))}
+            </ScrollView>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.portfolioScroll}>
-            {PORTFOLIO_IMAGES.map((uri, index) => (
-              <View key={index} style={styles.portfolioCard}>
-                <Image source={{ uri }} style={styles.portfolioImage} />
-              </View>
-            ))}
-          </ScrollView>
-        </View>
+        )}
 
         {/* About Section */}
         <View style={styles.section}>
@@ -279,9 +387,11 @@ export default function WorkerProfileScreen({ navigation, route }: WorkerProfile
         <View style={[styles.section, { marginBottom: Spacing.xl }]}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Ratings & Reviews</Text>
-            <TouchableOpacity onPress={() => setIsModalVisible(true)}>
-              <Text style={styles.viewAllText}>+ Leave Review</Text>
-            </TouchableOpacity>
+            {canReview && (
+              <TouchableOpacity onPress={() => setIsModalVisible(true)}>
+                <Text style={styles.viewAllText}>+ Leave Review</Text>
+              </TouchableOpacity>
+            )}
           </View>
           <View style={styles.reviewsList}>
             {reviews.length === 0 ? (
@@ -388,6 +498,10 @@ const styles = StyleSheet.create({
     ...Typography.headlineSm,
     color: Colors.onSurface,
     fontWeight: '700',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
   },
   iconCircle: {
     width: 36,

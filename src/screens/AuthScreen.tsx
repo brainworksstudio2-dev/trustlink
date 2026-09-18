@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { Alert } from '../components/AppAlert';
 import { supabase } from '../lib/supabase';
 import { Colors, Typography, Spacing, Radius, Shadow } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -70,7 +71,9 @@ export default function AuthScreen() {
     }
     
     setIsLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: 'trustlink://reset-password',
+    });
     setIsLoading(false);
     
     if (error) {

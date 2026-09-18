@@ -3,14 +3,10 @@
     "name": "TrustLink",
     "slug": "trustlink",
     "version": "1.0.0",
+    "scheme": "trustlink",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#f9f9ff"
-    },
     "ios": {
       "supportsTablet": true
     },
@@ -43,10 +39,26 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow TrustLink to use your location to find nearby workers."
+          "locationAlwaysAndWhenInUsePermission": "Allow TrustLink to use your location to find nearby workers.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-router",
+      "expo-notifications",
+      "expo-status-bar",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#f9f9ff"
+        }
+      ],
+      "@maplibre/maplibre-react-native",
+      "@sentry/react-native"
     ],
     "extra": {
       "eas": {

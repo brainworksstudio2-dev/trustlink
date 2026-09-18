@@ -1,22 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, Image, Alert, Dimensions, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, TextInput, Image, Dimensions, ActivityIndicator } from 'react-native';
+import { Alert } from '../components/AppAlert';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius, Shadow } from '../constants/theme';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RouteProp } from '@react-navigation/native';
-import { RootStackParamList } from '../navigation/AppNavigator';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Location from 'expo-location';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import MapView, { Marker, Region } from 'react-native-maps';
+import { MapLibreMap, Camera, Marker, MapUnavailable, isMapLibreAvailable } from '../lib/mapLibreCompat';
+import { MAP_STYLE_URL } from '../lib/mapStyle';
 import Toast from 'react-native-toast-message';
 import { supabase } from '../lib/supabase';
 import { Session } from '@supabase/supabase-js';
-
-type RequestServiceScreenProps = {
-  navigation: NativeStackNavigationProp<RootStackParamList, 'RequestService'>;
-  route: RouteProp<RootStackParamList, 'RequestService'>;
-};
 
 const { width } = Dimensions.get('window');
 
@@ -31,8 +26,9 @@ const SERVICE_TYPES = [
   { id: 'other', name: 'Other', icon: 'ellipsis-horizontal' },
 ];
 
-export default function RequestServiceScreen({ navigation, route }: RequestServiceScreenProps) {
-  const { worker_id, worker_name } = route.params || {};
+export default function RequestServiceScreen() {
+  const router = useRouter();
+  const { worker_id, worker_name } = useLocalSearchParams<{ worker_id?: string; worker_name?: string }>();
 
   const [step, setStep] = useState(worker_id ? 2 : 1);
   const [serviceType, setServiceType] = useState('plumbing');
@@ -62,8 +58,31 @@ export default function RequestServiceScreen({ navigation, route }: RequestServi
       }
       setStep(step + 1);
     } else {
-      // Final submission
+      if (location.trim().length === 0) {
+        Alert.alert('Location Required', 'Please enter your service address or use your current location.');
+        return;
+      }
+
       setIsSubmitting(true);
+
+      // GPS ("Use Current Location") already gives us coordinates. If the
+      // customer instead typed their own address, geocode it so the worker
+      // still gets a real destination to navigate to and track towards.
+      let latitude = locationObj?.coords.latitude ?? null;
+      let longitude = locationObj?.coords.longitude ?? null;
+      if (latitude == null || longitude == null) {
+        try {
+          const geocoded = await Location.geocodeAsync(location);
+          if (geocoded.length > 0) {
+            latitude = geocoded[0].latitude;
+            longitude = geocoded[0].longitude;
+          }
+        } catch (e) {
+          // Geocoding failed (e.g. offline, or address too vague) — fall
+          // back to submitting with the typed address text only.
+        }
+      }
+
       const { error } = await supabase.from('service_requests').insert({
         user_id: session?.user.id,
         worker_id: worker_id || null,
@@ -71,24 +90,10 @@ export default function RequestServiceScreen({ navigation, route }: RequestServi
         description: description,
         scheduled_date: date.toISOString(),
         location_address: location,
-        latitude: locationObj?.coords.latitude || null,
-        longitude: locationObj?.coords.longitude || null,
+        latitude,
+        longitude,
       });
       setIsSubmitting(false);
-
-      // If direct booking, send notification to the worker
-      if (worker_id && !error) {
-        const { data: workerData } = await supabase.from('workers').select('user_id').eq('id', worker_id).single();
-        
-        if (workerData?.user_id) {
-          await supabase.from('notifications').insert({
-            user_id: workerData.user_id,
-            title: 'New Booking Request!',
-            message: `You have received a new booking for ${date.toLocaleDateString()}.`,
-            type: 'booking_request'
-          });
-        }
-      }
 
       if (error) {
         Alert.alert('Error', error.message);
@@ -103,7 +108,7 @@ export default function RequestServiceScreen({ navigation, route }: RequestServi
         setStep(1);
         setDescription('');
         setLocation('');
-        navigation.navigate('Main');
+        router.navigate('/home');
       }
     }
   };
@@ -267,24 +272,21 @@ export default function RequestServiceScreen({ navigation, route }: RequestServi
             </TouchableOpacity>
 
             <View style={styles.mapContainer}>
-              <MapView 
-                style={styles.mapImage} 
-                region={locationObj ? {
-                  latitude: locationObj.coords.latitude,
-                  longitude: locationObj.coords.longitude,
-                  latitudeDelta: 0.005,
-                  longitudeDelta: 0.005,
-                } : {
-                  latitude: 40.7128,
-                  longitude: -74.0060,
-                  latitudeDelta: 0.0922,
-                  longitudeDelta: 0.0421,
-                }}
-              >
-                {locationObj && (
-                  <Marker coordinate={{ latitude: locationObj.coords.latitude, longitude: locationObj.coords.longitude }} />
-                )}
-              </MapView>
+              {!isMapLibreAvailable ? (
+                <MapUnavailable style={styles.mapImage} />
+              ) : (
+                <MapLibreMap style={styles.mapImage} mapStyle={MAP_STYLE_URL}>
+                  <Camera
+                    center={locationObj ? [locationObj.coords.longitude, locationObj.coords.latitude] : [-74.006, 40.7128]}
+                    zoom={locationObj ? 16 : 12}
+                  />
+                  {locationObj && (
+                    <Marker lngLat={[locationObj.coords.longitude, locationObj.coords.latitude]}>
+                      <View style={styles.pickedPinDot} />
+                    </Marker>
+                  )}
+                </MapLibreMap>
+              )}
               <View style={styles.mapBadge}>
                 <Ionicons name="shield-checkmark" size={12} color={Colors.secondary} />
                 <Text style={styles.mapBadgeText}>Verified Zone</Text>
@@ -306,7 +308,7 @@ export default function RequestServiceScreen({ navigation, route }: RequestServi
         <Text style={{ color: Colors.onSurfaceVariant, textAlign: 'center', marginHorizontal: 32, marginTop: 8, marginBottom: 24 }}>
           You must be logged in to submit service requests so you can track them in your booking history.
         </Text>
-        <TouchableOpacity style={styles.continueButton} onPress={() => navigation.navigate('Main', { screen: 'Profile' } as any)}>
+        <TouchableOpacity style={styles.continueButton} onPress={() => router.navigate('/profile')}>
           <Text style={styles.continueButtonText}>Go to Login</Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -322,7 +324,7 @@ export default function RequestServiceScreen({ navigation, route }: RequestServi
             <Ionicons name="arrow-back" size={20} color={Colors.onSurface} />
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity style={styles.backCircle} onPress={() => navigation.goBack()}>
+          <TouchableOpacity style={styles.backCircle} onPress={() => router.back()}>
              <Ionicons name="arrow-back" size={20} color={Colors.onSurface} />
           </TouchableOpacity>
         )}
@@ -587,7 +589,15 @@ const styles = StyleSheet.create({
   mapImage: {
     width: '100%',
     height: '100%',
-    resizeMode: 'cover',
+  },
+  pickedPinDot: {
+    width: 18,
+    height: 18,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.primary,
+    borderWidth: 3,
+    borderColor: Colors.onPrimary,
+    ...Shadow.sm,
   },
   mapBadge: {
     position: 'absolute',

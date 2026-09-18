@@ -3,13 +3,8 @@ import { StyleSheet, Text, View, TextInput, ScrollView, TouchableOpacity, Image,
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius, Shadow } from '../constants/theme';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../navigation/AppNavigator';
+import { useRouter } from 'expo-router';
 import { supabase } from '../lib/supabase';
-
-type HomeScreenProps = {
-  navigation: any;
-};
 
 const { width } = Dimensions.get('window');
 
@@ -24,7 +19,8 @@ const CATEGORIES = [
   { id: '8', name: 'Carpenter', icon: 'hammer', uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAjRxtC23L5brQbobuF9zQfy3Ubed4g1OWs8rOiDNqhDTrrcqbMV84IDNNe5JR255nSuM9SqtJAwbjW1dxRTYbLpK4kNesypcSjHRLgxpqezrRaic016WantNaKPw3mM1GJHUxuj3y9vmlktkkh2AZRbjWQQ3P_Fqv1Yda-U66sulBzKtpRPZGq0n_bIT_VTrwkcduFa0FUls4d9vaEnSo0KnRon3q6-nJ1LjsiXcS26UQd-QEM1JAw90_rL3WBVDTCVmR_COeALk0' },
 ];
 
-export default function HomeScreen({ navigation }: HomeScreenProps) {
+export default function HomeScreen() {
+  const router = useRouter();
   const [search, setSearch] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [userName, setUserName] = useState('');
@@ -40,11 +36,11 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   const handleCategoryPress = (category: string) => {
     // Navigate to Explore tab and filter there
-    navigation.navigate('Explore');
+    router.navigate('/explore');
   };
 
   const handleFindNearby = () => {
-    navigation.navigate('Explore');
+    router.navigate('/explore');
   };
 
   return (

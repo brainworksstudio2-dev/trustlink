@@ -1,30 +1,26 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { Alert } from '../components/AppAlert';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius, Shadow } from '../constants/theme';
 import { supabase } from '../lib/supabase';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../navigation/AppNavigator';
+import { useRouter } from 'expo-router';
+import { useFocusEffect } from "expo-router/react-navigation";
 
-type Props = {
-  navigation: any;
-};
-
-export default function RequestsListScreen({ navigation }: Props) {
+export default function RequestsListScreen() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<'sent' | 'received'>('sent');
   const [requests, setRequests] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isWorker, setIsWorker] = useState(false);
   const [workerId, setWorkerId] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchRequests();
-    const unsubscribe = navigation.addListener('focus', () => {
+  useFocusEffect(
+    useCallback(() => {
       fetchRequests();
-    });
-    return unsubscribe;
-  }, [activeTab]);
+    }, [activeTab])
+  );
 
   const fetchRequests = async () => {
     setIsLoading(true);
@@ -92,7 +88,7 @@ export default function RequestsListScreen({ navigation }: Props) {
     } else if (status === 'completed') {
       color = Colors.primary;
       bg = Colors.primaryContainer;
-    } else if (status === 'declined') {
+    } else if (status === 'declined' || status === 'cancelled') {
       color = Colors.error;
       bg = Colors.error + '22';
     }
@@ -101,6 +97,19 @@ export default function RequestsListScreen({ navigation }: Props) {
       <View style={[styles.statusBadge, { backgroundColor: bg }]}>
         <Text style={[styles.statusText, { color }]}>{status.toUpperCase()}</Text>
       </View>
+    );
+  };
+
+  const cancelRequest = (req: any) => {
+    Alert.alert(
+      activeTab === 'sent' ? 'Cancel Request?' : 'Cancel This Job?',
+      activeTab === 'sent'
+        ? 'The professional will be notified that this booking is no longer needed.'
+        : 'The client will be notified you can no longer take this job.',
+      [
+        { text: 'Keep It', style: 'cancel' },
+        { text: 'Cancel Booking', style: 'destructive', onPress: () => updateRequestStatus(req.id, 'cancelled') },
+      ]
     );
   };
 
@@ -115,10 +124,13 @@ export default function RequestsListScreen({ navigation }: Props) {
       return;
     }
 
-    navigation.navigate('Chat', {
-      request_id: req.id,
-      receiver_id: receiverId,
-      chat_title: title || 'Chat',
+    router.push({
+      pathname: '/chat/[id]',
+      params: {
+        id: req.id,
+        receiver_id: receiverId,
+        chat_title: title || 'Chat',
+      },
     });
   };
 
@@ -194,10 +206,27 @@ export default function RequestsListScreen({ navigation }: Props) {
                       <Text style={styles.btnText}>Open Chat</Text>
                     </TouchableOpacity>
                   )}
+
+                  {req.status === 'accepted' && (
+                    <TouchableOpacity
+                      style={[styles.btn, styles.trackBtn]}
+                      onPress={() => router.push({ pathname: '/track/[id]', params: { id: req.id } })}
+                    >
+                      <Ionicons name="navigate" size={16} color={Colors.onPrimary} />
+                      <Text style={styles.btnText}>Track</Text>
+                    </TouchableOpacity>
+                  )}
                   
                   {activeTab === 'received' && req.status === 'accepted' && (
                     <TouchableOpacity style={[styles.btn, styles.completeBtn]} onPress={() => updateRequestStatus(req.id, 'completed')}>
                       <Text style={[styles.btnText, {color: Colors.primary}]}>Mark Complete</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {((activeTab === 'sent' && (req.status === 'pending' || req.status === 'accepted')) ||
+                    (activeTab === 'received' && req.status === 'accepted')) && (
+                    <TouchableOpacity style={[styles.btn, styles.cancelBtn]} onPress={() => cancelRequest(req)}>
+                      <Text style={[styles.btnText, { color: Colors.error }]}>Cancel</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -236,6 +265,8 @@ const styles = StyleSheet.create({
   acceptBtn: { backgroundColor: Colors.availableGreen },
   declineBtn: { backgroundColor: Colors.error },
   chatBtn: { backgroundColor: Colors.primary },
+  trackBtn: { backgroundColor: Colors.secondary },
   completeBtn: { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.primary },
+  cancelBtn: { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.error + '60' },
   btnText: { ...Typography.labelSm, color: Colors.onPrimary, fontWeight: '700' },
 });
