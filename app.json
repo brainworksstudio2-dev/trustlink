@@ -57,8 +57,7 @@
           "backgroundColor": "#f9f9ff"
         }
       ],
-      "@maplibre/maplibre-react-native",
-      "@sentry/react-native"
+      "@maplibre/maplibre-react-native"
     ],
     "extra": {
       "eas": {
