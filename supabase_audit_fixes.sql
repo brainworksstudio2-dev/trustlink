@@ -141,3 +141,69 @@ create policy "Users can insert their own messages"
          or (b.blocker_id = messages.sender_id and b.blocked_id = messages.receiver_id)
     )
   );
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- 7. One worker profile per account. There was no unique constraint on
+--    workers.user_id, and registration did a plain insert (not upsert) --
+--    a double-tap, a retry after a slow photo upload, or re-registering
+--    after an interrupted session could all create a second workers row
+--    for the same user. Every "is this user a worker" check in the app
+--    uses .single()/.maybeSingle(), which silently ERRORS when more than
+--    one row matches -- so an affected seller would permanently see the
+--    "Apply Now" promo instead of their dashboard, with no visible error
+--    anywhere. This repairs any existing duplicates (keeping the oldest
+--    row per user so earlier bookings/reviews/requests still point at a
+--    row that exists, re-pointing anything that referenced a duplicate)
+--    and then locks the door so it can't happen again.
+-- ─────────────────────────────────────────────────────────────────────────
+do $$
+declare
+  dup record;
+  keep_id uuid;
+begin
+  for dup in
+    select user_id from public.workers
+    where user_id is not null
+    group by user_id
+    having count(*) > 1
+  loop
+    select id into keep_id from public.workers
+      where user_id = dup.user_id
+      order by created_at asc, id asc
+      limit 1;
+
+    update public.service_requests
+      set worker_id = keep_id
+      where worker_id in (
+        select id from public.workers where user_id = dup.user_id and id <> keep_id
+      );
+
+    update public.reviews
+      set worker_id = keep_id
+      where worker_id in (
+        select id from public.workers where user_id = dup.user_id and id <> keep_id
+      );
+
+    -- Favorites has a (user_id, worker_id) primary key, so re-pointing a
+    -- duplicate's favorite onto keep_id could collide with one that
+    -- already exists there -- drop those collisions first.
+    delete from public.favorites f
+      where f.worker_id in (
+        select id from public.workers where user_id = dup.user_id and id <> keep_id
+      )
+      and exists (
+        select 1 from public.favorites k where k.user_id = f.user_id and k.worker_id = keep_id
+      );
+
+    update public.favorites
+      set worker_id = keep_id
+      where worker_id in (
+        select id from public.workers where user_id = dup.user_id and id <> keep_id
+      );
+
+    delete from public.workers where user_id = dup.user_id and id <> keep_id;
+  end loop;
+end $$;
+
+alter table public.workers drop constraint if exists workers_user_id_key;
+alter table public.workers add constraint workers_user_id_key unique (user_id);

@@ -303,18 +303,15 @@ export default function WorkerRegistrationScreen() {
         portfolio_url: portfolio || null,
       };
 
-      if (isEditing) {
-        // UPDATE existing row
-        const { error } = await supabase
-          .from('workers')
-          .update(workerData)
-          .eq('user_id', session.user.id);
-        if (error) throw error;
-      } else {
-        // INSERT new row
-        const { error } = await supabase.from('workers').insert([workerData]);
-        if (error) throw error;
-      }
+      // Upsert on user_id (not a plain insert) so a double-tap, a retry
+      // after a slow photo upload, or re-registering after an interrupted
+      // session can never create a second workers row for this account --
+      // that used to silently break every "is this user a worker" check
+      // in the app for the affected seller.
+      const { error } = await supabase
+        .from('workers')
+        .upsert([workerData], { onConflict: 'user_id' });
+      if (error) throw error;
 
       // Keep the account's own phone number in sync so it doesn't have to be
       // entered twice if they ever edit their account details separately.
