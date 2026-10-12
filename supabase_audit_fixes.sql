@@ -207,3 +207,64 @@ end $$;
 
 alter table public.workers drop constraint if exists workers_user_id_key;
 alter table public.workers add constraint workers_user_id_key unique (user_id);
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- 8. Account deletion (required for Play Store submission -- Google
+--    requires either an in-app way to delete an account or a public page
+--    explaining how to request it; this is the in-app flow). Soft-delete
+--    with a 30-day grace period: requesting deletion signs the user out
+--    and hides their worker listing immediately, a daily job hard-deletes
+--    anyone past the grace window, and logging back in during the window
+--    offers a restore option instead of deleting on the spot.
+-- ─────────────────────────────────────────────────────────────────────────
+alter table public.users add column if not exists deleted_at timestamp with time zone;
+
+drop policy if exists "Users can update their own profile" on public.users;
+create policy "Users can update their own profile"
+  on public.users for update
+  using (auth.uid() = id)
+  with check (auth.uid() = id);
+
+-- Soft-deleted workers stop appearing to clients immediately, without
+-- waiting for the hard-delete job.
+drop policy if exists "Anyone can view workers" on public.workers;
+create policy "Anyone can view workers"
+  on public.workers for select
+  using (
+    not exists (
+      select 1 from public.users u where u.id = workers.user_id and u.deleted_at is not null
+    )
+  );
+
+create or replace function public.purge_deleted_accounts()
+returns void
+language plpgsql
+security definer set search_path = public, auth
+as $$
+begin
+  delete from auth.users
+  where id in (
+    select id from public.users
+    where deleted_at is not null
+      and deleted_at < now() - interval '30 days'
+  );
+end;
+$$;
+
+-- Schedules the daily purge via pg_cron if it's available on this project.
+-- If this errors (pg_cron not enabled), enable it from the Supabase
+-- Dashboard under Database -> Extensions -> pg_cron, then re-run just this
+-- block -- the purge_deleted_accounts() function above works either way;
+-- without the schedule it just needs to be called manually/periodically.
+create extension if not exists pg_cron;
+
+do $$
+begin
+  if not exists (select 1 from cron.job where jobname = 'purge-deleted-accounts-daily') then
+    perform cron.schedule(
+      'purge-deleted-accounts-daily',
+      '0 3 * * *',
+      $cron$ select public.purge_deleted_accounts(); $cron$
+    );
+  end if;
+end $$;

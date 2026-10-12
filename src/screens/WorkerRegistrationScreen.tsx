@@ -8,6 +8,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
+import * as Linking from 'expo-linking';
+import { TERMS_OF_SERVICE_URL } from '../lib/legal';
 import {
   MapLibreMap,
   Camera,
@@ -596,7 +598,9 @@ export default function WorkerRegistrationScreen() {
         </TouchableOpacity>
         <Text style={styles.termsText}>
           By clicking complete, you agree to our{' '}
-          <Text style={styles.termsLink}>Professional Terms of Service</Text>.
+          <Text style={styles.termsLink} onPress={() => Linking.openURL(TERMS_OF_SERVICE_URL)}>
+            Professional Terms of Service
+          </Text>.
         </Text>
       </ScrollView>
     </SafeAreaView>

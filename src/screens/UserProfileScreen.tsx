@@ -9,6 +9,10 @@ import { Session } from '@supabase/supabase-js';
 
 import { useFocusEffect } from "expo-router/react-navigation";
 import { useRouter } from 'expo-router';
+import * as Linking from 'expo-linking';
+import Toast from 'react-native-toast-message';
+import { requestAccountDeletion, DELETION_GRACE_PERIOD_DAYS } from '../lib/accountDeletion';
+import { PRIVACY_POLICY_URL } from '../lib/legal';
 
 export default function UserProfileScreen() {
   const router = useRouter();
@@ -19,6 +23,7 @@ export default function UserProfileScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [workerProfile, setWorkerProfile] = useState<any | null>(null);
   const [loadingWorker, setLoadingWorker] = useState(true);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -83,6 +88,38 @@ export default function UserProfileScreen() {
 
   const handleBecomeWorker = () => {
     router.push('/worker-registration');
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account?',
+      `Your account will be deactivated immediately and permanently deleted after ${DELETION_GRACE_PERIOD_DAYS} days. You can restore it by signing back in before then.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete My Account',
+          style: 'destructive',
+          onPress: async () => {
+            if (!session?.user?.id) return;
+            setIsDeletingAccount(true);
+            try {
+              await requestAccountDeletion(session.user.id);
+              Toast.show({
+                type: 'info',
+                text1: 'Account scheduled for deletion',
+                text2: `It will be permanently removed in ${DELETION_GRACE_PERIOD_DAYS} days unless you sign back in.`,
+                position: 'top',
+                visibilityTime: 5000,
+              });
+              router.replace('/home');
+            } catch (e: any) {
+              setIsDeletingAccount(false);
+              Alert.alert('Error', e.message || 'Could not delete your account. Please try again.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -177,6 +214,16 @@ export default function UserProfileScreen() {
         <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
           <Ionicons name="log-out-outline" size={20} color={Colors.error} />
           <Text style={styles.signOutBtnText}>Sign Out</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => Linking.openURL(PRIVACY_POLICY_URL)} style={styles.legalLink}>
+          <Text style={styles.legalLinkText}>Privacy Policy & Terms</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={handleDeleteAccount} disabled={isDeletingAccount} style={styles.deleteAccountLink}>
+          <Text style={styles.deleteAccountLinkText}>
+            {isDeletingAccount ? 'Deleting…' : 'Delete My Account'}
+          </Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -355,6 +402,24 @@ const styles = StyleSheet.create({
     ...Typography.labelLg,
     color: Colors.error,
     fontWeight: '600',
+  },
+  legalLink: {
+    alignItems: 'center',
+    paddingVertical: Spacing.md,
+  },
+  legalLinkText: {
+    ...Typography.labelSm,
+    color: Colors.onSurfaceVariant,
+    textDecorationLine: 'underline',
+  },
+  deleteAccountLink: {
+    alignItems: 'center',
+    paddingVertical: Spacing.sm,
+  },
+  deleteAccountLinkText: {
+    ...Typography.labelSm,
+    color: Colors.error,
+    opacity: 0.7,
   },
   editProfileBtn: {
     flexDirection: 'row',
