@@ -241,9 +241,6 @@ export default function WorkerProfileScreen() {
           <View style={styles.profileInfoRow}>
             <View style={styles.avatarContainer}>
               <Image source={{ uri: worker.avatar_url }} style={styles.avatar} />
-              <View style={styles.verifiedBadge}>
-                <Ionicons name="checkmark-circle" size={16} color={Colors.gold} />
-              </View>
             </View>
 
             <View style={styles.nameDetails}>
@@ -529,14 +526,6 @@ const styles = StyleSheet.create({
     height: 68,
     borderRadius: Radius.full,
     backgroundColor: Colors.surfaceContainerLow,
-  },
-  verifiedBadge: {
-    position: 'absolute',
-    bottom: -2,
-    right: -2,
-    backgroundColor: Colors.surfaceContainerLowest,
-    borderRadius: Radius.full,
-    padding: 2,
   },
   nameDetails: {
     flex: 1,

@@ -258,9 +258,6 @@ export default function ExploreScreen() {
                 <View style={styles.topRow}>
                   <View style={styles.avatarContainer}>
                     <Image source={{ uri: worker.avatar_url }} style={styles.avatar} />
-                    <View style={styles.verifiedIconContainer}>
-                      <Ionicons name="checkmark-circle" size={16} color={Colors.gold} />
-                    </View>
                   </View>
                   <View style={styles.detailsContainer}>
                     <View style={styles.nameRow}>
@@ -376,9 +373,6 @@ export default function ExploreScreen() {
             <View style={styles.topRow}>
               <View style={styles.avatarContainer}>
                 <Image source={{ uri: selectedWorker.avatar_url }} style={styles.avatar} />
-                <View style={styles.verifiedIconContainer}>
-                  <Ionicons name="checkmark-circle" size={16} color={Colors.gold} />
-                </View>
               </View>
               <View style={styles.detailsContainer}>
                 <View style={styles.nameRow}>
@@ -611,18 +605,6 @@ const styles = StyleSheet.create({
     height: 64,
     borderRadius: Radius.full,
     backgroundColor: Colors.surfaceContainerLow,
-  },
-  verifiedIconContainer: {
-    position: 'absolute',
-    bottom: -2,
-    right: -2,
-    backgroundColor: Colors.surfaceContainerLowest,
-    borderRadius: Radius.full,
-    padding: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
   },
   detailsContainer: {
     flex: 1,

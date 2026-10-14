@@ -104,14 +104,14 @@ export default function HomeScreen() {
         {/* Promotion / Trust Banner */}
         <View style={styles.banner}>
           <View style={styles.bannerTextContainer}>
-            <Text style={styles.bannerTitle}>Verified Professionals</Text>
+            <Text style={styles.bannerTitle}>Real Reviews, Real Pros</Text>
             <Text style={styles.bannerDesc}>
-              Every service provider on TrustLink goes through a rigorous identity and skill verification process. Hire with total confidence.
+              Every rating on TrustLink comes from a real client who booked through the app. Browse profiles, chat directly, and book with confidence.
             </Text>
           </View>
           <View style={styles.goldBadge}>
-            <Ionicons name="shield-checkmark" size={16} color={Colors.gold} />
-            <Text style={styles.goldBadgeText}>Trust Certified</Text>
+            <Ionicons name="star" size={16} color={Colors.gold} />
+            <Text style={styles.goldBadgeText}>Community Rated</Text>
           </View>
         </View>
       </ScrollView>
