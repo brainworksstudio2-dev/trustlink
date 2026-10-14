@@ -22,11 +22,11 @@ const SLIDES = [
   },
   {
     image: require('../../assets/onboarding-2.jpg'),
-    headline: 'Secure Booking & Payments',
+    headline: 'Book Instantly, Track in Real Time',
     description:
-      'Book top-tier professionals instantly. Your funds are held in a secure escrow until the job is completed to your satisfaction.',
+      'Hire a professional in seconds and watch them make their way to you on a live map. Chat directly and agree on payment with no hidden middleman fees.',
     bullets: [
-      { icon: 'wallet' as const, title: 'Escrow Protected', desc: 'Money safely held until work is signed off.' },
+      { icon: 'navigate' as const, title: 'Live Job Tracking', desc: 'Watch your pro en route, just like a ride share.' },
       { icon: 'calendar' as const, title: 'Instant Booking', desc: 'Hire immediately without long discussions.' },
     ],
   },
