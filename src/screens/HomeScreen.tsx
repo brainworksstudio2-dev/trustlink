@@ -35,8 +35,13 @@ export default function HomeScreen() {
   }, []);
 
   const handleCategoryPress = (category: string) => {
-    // Navigate to Explore tab and filter there
-    router.navigate('/explore');
+    router.navigate({ pathname: '/explore', params: { q: category } });
+  };
+
+  const handleSearchSubmit = () => {
+    if (search.trim()) {
+      router.navigate({ pathname: '/explore', params: { q: search.trim() } });
+    }
   };
 
   const handleFindNearby = () => {
@@ -63,6 +68,8 @@ export default function HomeScreen() {
             onChangeText={setSearch}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
+            onSubmitEditing={handleSearchSubmit}
+            returnKeyType="search"
           />
           {search.length > 0 && (
             <TouchableOpacity onPress={() => setSearch('')} style={styles.clearButton}>

@@ -5,7 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { MapLibreMap, Camera, Marker, UserLocation, MapUnavailable, isMapLibreAvailable } from '../lib/mapLibreCompat';
 import { Colors, Typography, Spacing, Radius, Shadow } from '../constants/theme';
-import { useRouter } from 'expo-router';
+import { Alert } from '../components/AppAlert';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 
 import { supabase } from '../lib/supabase';
 import { haversineDistanceKm, formatDistanceKm } from '../lib/geo';
@@ -37,8 +38,9 @@ const DEFAULT_ZOOM = 12;
 
 export default function ExploreScreen() {
   const router = useRouter();
+  const { q } = useLocalSearchParams<{ q?: string }>();
   const [selectedFilter, setSelectedFilter] = useState('All Pros');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(q || '');
   const [viewMode, setViewMode] = useState<'map' | 'list'>('map');
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [workersData, setWorkersData] = useState<any[]>([]);
@@ -48,12 +50,23 @@ export default function ExploreScreen() {
 
   const [locationDenied, setLocationDenied] = useState(false);
 
+  // Tabs stay mounted, so re-arriving here from Home (a new search, or a
+  // different category tapped) needs to update the query even when this
+  // screen was already open -- the useState initializer alone only
+  // catches the very first mount.
+  useEffect(() => {
+    if (q) setSearchQuery(q);
+  }, [q]);
+
   useEffect(() => {
     (async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
 
-      let baseLat = 40.7128; // Default NY, used only if permission is denied
-      let baseLng = -74.006;
+      // Falls back to Accra (TrustLink's launch market) if permission is
+      // denied, rather than an arbitrary coordinate -- the locationBanner
+      // below still tells the user results aren't based on where they are.
+      let baseLat = 5.6037;
+      let baseLng = -0.187;
 
       if (status === 'granted') {
         try {
@@ -161,7 +174,7 @@ export default function ExploreScreen() {
     if (phone) {
       Linking.openURL(`tel:${phone}`);
     } else {
-      Linking.openURL('tel:1234567890');
+      Alert.alert('No Phone Number', "This professional hasn't added a phone number yet.");
     }
   };
 
@@ -169,7 +182,7 @@ export default function ExploreScreen() {
     if (whatsapp) {
       Linking.openURL(`https://wa.me/${whatsapp}`);
     } else {
-      Linking.openURL('https://wa.me/1234567890');
+      Alert.alert('No WhatsApp Number', "This professional hasn't added a WhatsApp number yet.");
     }
   };
 
@@ -181,7 +194,7 @@ export default function ExploreScreen() {
     ? [selectedWorker.coordinate.longitude, selectedWorker.coordinate.latitude]
     : location
     ? [location.coords.longitude, location.coords.latitude]
-    : [-74.006, 40.7128];
+    : [-0.187, 5.6037]; // Accra fallback, matches the baseLat/baseLng default above
   const mapZoom = selectedWorker ? Math.max(DEFAULT_ZOOM, 14) : DEFAULT_ZOOM;
 
   // MapLibre markers stack in render order (last drawn wins), unlike native
@@ -229,6 +242,17 @@ export default function ExploreScreen() {
           <ScrollView contentContainerStyle={styles.listContainer} showsVerticalScrollIndicator={false}>
             {/* Top padding to account for floating header */}
             <View style={{ height: 160 }} />
+            {filteredWorkers.length === 0 && (
+              <View style={styles.emptyState}>
+                <Ionicons name="search-outline" size={40} color={Colors.outline} />
+                <Text style={styles.emptyStateTitle}>No professionals found</Text>
+                <Text style={styles.emptyStateText}>
+                  {searchQuery.trim() || selectedFilter !== 'All Pros'
+                    ? 'Try a different search term or category.'
+                    : 'No workers are registered nearby yet.'}
+                </Text>
+              </View>
+            )}
             {filteredWorkers.map((worker) => (
               <View key={worker.id} style={styles.card}>
                 <View style={styles.topRow}>
@@ -243,7 +267,7 @@ export default function ExploreScreen() {
                       <Text style={styles.workerName}>{worker.name}</Text>
                       <View style={styles.ratingRow}>
                         <Ionicons name="star" size={14} color={Colors.gold} />
-                        <Text style={styles.ratingText}>{worker.rating}</Text>
+                        <Text style={styles.ratingText}>{worker.rating || 'New'}</Text>
                       </View>
                     </View>
                     <Text style={styles.workerSpecialty}>{worker.specialty}</Text>
@@ -327,6 +351,15 @@ export default function ExploreScreen() {
             })}
           </ScrollView>
         </View>
+
+        {!isLoadingLocation && locationDenied && (
+          <TouchableOpacity style={styles.locationBanner} onPress={() => Linking.openSettings()} activeOpacity={0.85}>
+            <Ionicons name="location-outline" size={16} color={Colors.onPrimaryFixed} />
+            <Text style={styles.locationBannerText}>
+              Location is off, so results aren't based on where you are. Tap to enable it.
+            </Text>
+          </TouchableOpacity>
+        )}
       </SafeAreaView>
 
       {/* Selected Worker Bottom Card */}
@@ -352,7 +385,7 @@ export default function ExploreScreen() {
                   <Text style={styles.workerName}>{selectedWorker.name}</Text>
                   <View style={styles.ratingRow}>
                     <Ionicons name="star" size={14} color={Colors.gold} />
-                    <Text style={styles.ratingText}>{selectedWorker.rating}</Text>
+                    <Text style={styles.ratingText}>{selectedWorker.rating || 'New'}</Text>
                   </View>
                 </View>
                 <Text style={styles.workerSpecialty}>{selectedWorker.specialty}</Text>
@@ -393,6 +426,23 @@ const styles = StyleSheet.create({
     ...Typography.bodyMd,
     color: Colors.onSurfaceVariant,
     marginTop: Spacing.sm,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: Spacing.xl * 2,
+    paddingHorizontal: Spacing.xl,
+    gap: 6,
+  },
+  emptyStateTitle: {
+    ...Typography.labelLg,
+    color: Colors.onSurface,
+    fontWeight: '700',
+    marginTop: Spacing.sm,
+  },
+  emptyStateText: {
+    ...Typography.bodySm,
+    color: Colors.outline,
+    textAlign: 'center',
   },
   listSafeContainer: {
     flex: 1,
@@ -459,6 +509,24 @@ const styles = StyleSheet.create({
   filterScrollView: {
     paddingHorizontal: Spacing.containerMobile,
     gap: Spacing.sm,
+  },
+  locationBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginHorizontal: Spacing.containerMobile,
+    marginTop: Spacing.sm,
+    backgroundColor: Colors.gold,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    ...Shadow.sm,
+  },
+  locationBannerText: {
+    ...Typography.labelSm,
+    color: Colors.onPrimaryFixed,
+    fontWeight: '600',
+    flex: 1,
   },
   chip: {
     paddingHorizontal: Spacing.md,

@@ -166,18 +166,22 @@ export default function WorkerProfileScreen() {
     }
   };
 
-  const avgRating = reviews.length > 0 
-    ? (reviews.reduce((acc, curr) => acc + curr.rating, 0) / reviews.length).toFixed(1) 
-    : worker.rating;
+  const avgRating = reviews.length > 0
+    ? (reviews.reduce((acc, curr) => acc + curr.rating, 0) / reviews.length).toFixed(1)
+    : worker.rating || null;
 
-  const totalReviews = reviews.length > 0 ? reviews.length : worker.reviews;
+  const totalReviews = reviews.length > 0 ? reviews.length : worker.reviews || 0;
 
   const handleCall = () => {
     if (isBlocked) {
       Alert.alert('Unavailable', 'You can no longer contact this professional.');
       return;
     }
-    Linking.openURL(`tel:${worker.phone_number || '1234567890'}`);
+    if (!worker.phone_number) {
+      Alert.alert('No Phone Number', "This professional hasn't added a phone number yet.");
+      return;
+    }
+    Linking.openURL(`tel:${worker.phone_number}`);
   };
 
   const handleChat = () => {
@@ -185,7 +189,11 @@ export default function WorkerProfileScreen() {
       Alert.alert('Unavailable', 'You can no longer contact this professional.');
       return;
     }
-    Linking.openURL(`https://wa.me/${worker.whatsapp_number || '1234567890'}`);
+    if (!worker.whatsapp_number) {
+      Alert.alert('No WhatsApp Number', "This professional hasn't added a WhatsApp number yet.");
+      return;
+    }
+    Linking.openURL(`https://wa.me/${worker.whatsapp_number}`);
   };
 
   const handleBook = () => {
@@ -251,9 +259,9 @@ export default function WorkerProfileScreen() {
             <View style={styles.ratingDetails}>
               <View style={styles.ratingRow}>
                 <Ionicons name="star" size={18} color={Colors.gold} />
-                <Text style={styles.ratingNumber}>{avgRating}</Text>
+                <Text style={styles.ratingNumber}>{avgRating || 'New'}</Text>
               </View>
-              <Text style={styles.reviewsCount}>({totalReviews} reviews)</Text>
+              <Text style={styles.reviewsCount}>{avgRating ? `(${totalReviews} reviews)` : 'No reviews yet'}</Text>
             </View>
           </View>
 
