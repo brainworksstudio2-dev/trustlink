@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, Animated, Dimensions } from 'react-native';
+import { StyleSheet, Text, View, Animated, Dimensions, Image, Easing } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius } from '../constants/theme';
@@ -11,35 +11,69 @@ const { width } = Dimensions.get('window');
 
 export default function SplashScreen() {
   const router = useRouter();
+  // Logo: a quick, slightly springy pop-in so the handoff from the static
+  // native splash (same mark, same background) into this animated one
+  // reads as the logo "coming alive" rather than a jump cut.
+  const logoScale = useRef(new Animated.Value(0.55)).current;
+  const logoOpacity = useRef(new Animated.Value(0)).current;
+  const logoRotate = useRef(new Animated.Value(1)).current; // 1 -> -6deg, 0 -> 0deg
+  // Text/tagline/footer fade in just after, staggered behind the logo.
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Reveal animation
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 800,
-        useNativeDriver: true,
-      }),
+    Animated.sequence([
+      Animated.parallel([
+        Animated.spring(logoScale, {
+          toValue: 1,
+          friction: 6,
+          tension: 60,
+          useNativeDriver: true,
+        }),
+        Animated.timing(logoOpacity, {
+          toValue: 1,
+          duration: 450,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(logoRotate, {
+          toValue: 0,
+          duration: 600,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+      ]),
     ]).start();
 
     // Progress loading bar animation
     Animated.timing(progressAnim, {
       toValue: 1,
-      duration: 2000,
+      duration: 1800,
+      delay: 300,
       useNativeDriver: false, // width animation requires layout driver
     }).start(async () => {
       const hasSeenOnboarding = await AsyncStorage.getItem(HAS_SEEN_ONBOARDING_KEY);
       router.replace(hasSeenOnboarding ? '/home' : '/onboarding');
     });
   }, [router]);
+
+  const logoRotateDeg = logoRotate.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '-6deg'],
+  });
 
   const progressBarWidth = progressAnim.interpolate({
     inputRange: [0, 1],
@@ -54,25 +88,30 @@ export default function SplashScreen() {
       <View style={[styles.blob, styles.blob1]} />
       <View style={[styles.blob, styles.blob2]} />
 
-      <Animated.View 
+      {/* Logo + wordmark -- the real brand lockup, popping in before the
+          rest of the content fades in beneath it. */}
+      <Animated.View
         style={[
-          styles.content, 
-          { 
-            opacity: fadeAnim, 
-            transform: [{ translateY: slideAnim }] 
+          styles.logoWrap,
+          {
+            opacity: logoOpacity,
+            transform: [{ scale: logoScale }, { rotate: logoRotateDeg }],
+          },
+        ]}
+      >
+        <Image source={require('../../assets/splash-icon.png')} style={styles.logo} resizeMode="contain" />
+      </Animated.View>
+
+      <Animated.View
+        style={[
+          styles.content,
+          {
+            opacity: fadeAnim,
+            transform: [{ translateY: slideAnim }]
           }
         ]}
       >
-        {/* Logo Container */}
-        <View style={styles.logoContainer}>
-          <Ionicons name="shield-checkmark" size={48} color={Colors.onPrimary} />
-        </View>
-
-        {/* Brand Typography */}
-        <View style={styles.brandContainer}>
-          <Text style={styles.title}>TrustLink</Text>
-          <Text style={styles.subtitle}>EXCELLENCE VERIFIED</Text>
-        </View>
+        <Text style={styles.subtitle}>EXCELLENCE VERIFIED</Text>
 
         {/* Tagline / Value Prop */}
         <Text style={styles.tagline}>
@@ -127,34 +166,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     maxWidth: 320,
   },
-  logoContainer: {
-    width: 96,
-    height: 96,
-    borderRadius: Radius.xxl,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 8,
+  logoWrap: {
     marginBottom: Spacing.lg,
   },
-  brandContainer: {
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
-  title: {
-    ...Typography.headlineLgMobile,
-    color: Colors.primary,
-    fontWeight: '800',
+  logo: {
+    width: 240,
+    height: 100,
   },
   subtitle: {
     ...Typography.labelSm,
     color: Colors.outline,
     letterSpacing: 3,
-    marginTop: Spacing.xs,
+    marginBottom: Spacing.sm,
     textTransform: 'uppercase',
   },
   tagline: {
