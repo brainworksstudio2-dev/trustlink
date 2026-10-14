@@ -10,25 +10,6 @@ import { Session } from '@supabase/supabase-js';
 
 const { width } = Dimensions.get('window');
 
-const REVIEWS = [
-  {
-    id: '1',
-    author: 'Elena Martinez',
-    date: '2 days ago',
-    rating: 5,
-    avatarInitials: 'EM',
-    content: 'Julian was incredibly professional. He arrived exactly on time and finished the work ahead of schedule. The finish is absolutely flawless. Highly recommend!',
-  },
-  {
-    id: '2',
-    author: 'Thomas Reed',
-    date: '1 week ago',
-    rating: 4,
-    avatarInitials: 'TR',
-    content: 'Great work on our installation. He was very clear about the pricing and the materials needed. A true expert with great credentials.',
-  },
-];
-
 export default function WorkerProfileScreen() {
   const router = useRouter();
   const { worker: workerParam } = useLocalSearchParams<{ id: string; worker: string }>();
@@ -213,8 +194,8 @@ export default function WorkerProfileScreen() {
       return;
     }
     Alert.alert(
-      'Secure Escrow Booking',
-      `Would you like to book ${worker.name} starting at ${worker.rate}? Under TrustLink protocol, your funds are safely held in escrow until completion.`,
+      'Confirm Booking',
+      `Book ${worker.name} starting at ${worker.rate}? You'll agree on payment directly with them once the job is confirmed.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
@@ -372,7 +353,7 @@ export default function WorkerProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>About</Text>
           <View style={styles.cardContainer}>
-            <Text style={styles.aboutText}>{worker.about}</Text>
+            <Text style={styles.aboutText}>{worker.about_text || 'This professional hasn\'t added a bio yet.'}</Text>
             <View style={styles.tagsContainer}>
               {worker.tags && worker.tags.map((tag: string) => (
                 <View key={tag} style={styles.tagChip}>
