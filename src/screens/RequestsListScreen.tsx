@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
 import { Alert } from '../components/AppAlert';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,6 +13,7 @@ export default function RequestsListScreen() {
   const [activeTab, setActiveTab] = useState<'sent' | 'received'>('sent');
   const [requests, setRequests] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isWorker, setIsWorker] = useState(false);
   const [workerId, setWorkerId] = useState<string | null>(null);
 
@@ -22,11 +23,15 @@ export default function RequestsListScreen() {
     }, [activeTab])
   );
 
-  const fetchRequests = async () => {
-    setIsLoading(true);
+  const handleRefresh = () => fetchRequests(true);
+
+  const fetchRequests = async (isRefresh = false) => {
+    if (isRefresh) setIsRefreshing(true);
+    else setIsLoading(true);
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       setIsLoading(false);
+      setIsRefreshing(false);
       return;
     }
 
@@ -59,8 +64,9 @@ export default function RequestsListScreen() {
       
       if (data) setRequests(data);
     }
-    
+
     setIsLoading(false);
+    setIsRefreshing(false);
   };
 
   const updateRequestStatus = async (id: string, status: string) => {
@@ -162,7 +168,12 @@ export default function RequestsListScreen() {
           <ActivityIndicator size="large" color={Colors.primary} />
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.listContainer}>
+        <ScrollView
+          contentContainerStyle={styles.listContainer}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={Colors.primary} colors={[Colors.primary]} />
+          }
+        >
           {requests.length === 0 ? (
             <View style={styles.emptyContainer}>
               <Ionicons name="calendar-outline" size={48} color={Colors.outline} />

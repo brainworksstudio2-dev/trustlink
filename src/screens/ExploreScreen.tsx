@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Image, Linking, Dimensions, ActivityIndicator, TextInput } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Image, Linking, Dimensions, ActivityIndicator, TextInput, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { MapLibreMap, Camera, Marker, UserLocation, MapUnavailable, isMapLibreAvailable } from '../lib/mapLibreCompat';
 import { Colors, Typography, Spacing, Radius, Shadow } from '../constants/theme';
 import { Alert } from '../components/AppAlert';
+import SkeletonCard from '../components/SkeletonCard';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 
 import { supabase } from '../lib/supabase';
@@ -47,6 +48,7 @@ export default function ExploreScreen() {
   const [filterChips, setFilterChips] = useState<string[]>(['All Pros']);
   const [selectedWorker, setSelectedWorker] = useState<any | null>(null);
   const [isLoadingLocation, setIsLoadingLocation] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const [locationDenied, setLocationDenied] = useState(false);
 
@@ -58,8 +60,7 @@ export default function ExploreScreen() {
     if (q) setSearchQuery(q);
   }, [q]);
 
-  useEffect(() => {
-    (async () => {
+  const loadWorkers = async (isRefresh: boolean) => {
       let { status } = await Location.requestForegroundPermissionsAsync();
 
       // Falls back to Accra (TrustLink's launch market) if permission is
@@ -156,9 +157,18 @@ export default function ExploreScreen() {
         console.error('Fetch exception:', err);
       }
 
-      setIsLoadingLocation(false);
-    })();
+      if (isRefresh) setIsRefreshing(false);
+      else setIsLoadingLocation(false);
+  };
+
+  useEffect(() => {
+    loadWorkers(false);
   }, []);
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    loadWorkers(true);
+  };
 
   const filteredWorkers = workersData.filter((worker) => {
     if (selectedFilter !== 'All Pros' && worker.category !== selectedFilter) return false;
@@ -239,10 +249,22 @@ export default function ExploreScreen() {
         </View>
       ) : (
         <SafeAreaView style={styles.listSafeContainer}>
-          <ScrollView contentContainerStyle={styles.listContainer} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            contentContainerStyle={styles.listContainer}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={Colors.primary} colors={[Colors.primary]} />
+            }
+          >
             {/* Top padding to account for floating header */}
             <View style={{ height: 160 }} />
-            {filteredWorkers.length === 0 && (
+            {isLoadingLocation ? (
+              <>
+                <SkeletonCard />
+                <SkeletonCard />
+                <SkeletonCard />
+              </>
+            ) : filteredWorkers.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="search-outline" size={40} color={Colors.outline} />
                 <Text style={styles.emptyStateTitle}>No professionals found</Text>
@@ -252,8 +274,8 @@ export default function ExploreScreen() {
                     : 'No workers are registered nearby yet.'}
                 </Text>
               </View>
-            )}
-            {filteredWorkers.map((worker) => (
+            ) : null}
+            {!isLoadingLocation && filteredWorkers.map((worker) => (
               <View key={worker.id} style={styles.card}>
                 <View style={styles.topRow}>
                   <View style={styles.avatarContainer}>
