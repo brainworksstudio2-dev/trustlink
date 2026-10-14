@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Image, Linking, Dimensions, ActivityIndicator, TextInput, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +11,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 
 import { supabase } from '../lib/supabase';
 import { haversineDistanceKm, formatDistanceKm } from '../lib/geo';
+import { toWhatsAppNumber } from '../lib/phone';
 import { MAP_STYLE_URL } from '../lib/mapStyle';
 
 // Map category -> icon name
@@ -51,6 +52,12 @@ export default function ExploreScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const [locationDenied, setLocationDenied] = useState(false);
+
+  // MapLibre fires the map's own onPress right after a marker's onPress
+  // for the same tap, which would otherwise immediately null out the
+  // selection we just set -- this window lets the map's handler ignore
+  // a press that just came from tapping a marker.
+  const lastMarkerPressAt = useRef(0);
 
   // Tabs stay mounted, so re-arriving here from Home (a new search, or a
   // different category tapped) needs to update the query even when this
@@ -190,7 +197,7 @@ export default function ExploreScreen() {
 
   const handleWhatsApp = (whatsapp: string) => {
     if (whatsapp) {
-      Linking.openURL(`https://wa.me/${whatsapp}`);
+      Linking.openURL(`https://wa.me/${toWhatsAppNumber(whatsapp)}`);
     } else {
       Alert.alert('No WhatsApp Number', "This professional hasn't added a WhatsApp number yet.");
     }
@@ -226,14 +233,25 @@ export default function ExploreScreen() {
           ) : !isMapLibreAvailable ? (
             <MapUnavailable style={styles.map} />
           ) : (
-            <MapLibreMap style={styles.map} mapStyle={MAP_STYLE_URL} onPress={() => setSelectedWorker(null)}>
+            <MapLibreMap
+              style={styles.map}
+              mapStyle={MAP_STYLE_URL}
+              onPress={() => {
+                if (Date.now() - lastMarkerPressAt.current < 300) return;
+                setSelectedWorker(null);
+              }}
+            >
               <Camera center={mapCenter} zoom={mapZoom} duration={500} />
               {!locationDenied && <UserLocation />}
               {markeredWorkers.map((worker) => (
                 <Marker
                   key={worker.id}
+                  id={String(worker.id)}
                   lngLat={[worker.coordinate.longitude, worker.coordinate.latitude]}
-                  onPress={() => setSelectedWorker(worker)}
+                  onPress={() => {
+                    lastMarkerPressAt.current = Date.now();
+                    setSelectedWorker(worker);
+                  }}
                 >
                   <View style={[styles.markerContainer, selectedWorker?.id === worker.id && styles.markerSelected]}>
                     <Ionicons

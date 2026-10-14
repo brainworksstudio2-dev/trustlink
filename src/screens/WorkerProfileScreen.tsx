@@ -7,6 +7,7 @@ import { Colors, Typography, Spacing, Radius, Shadow } from '../constants/theme'
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import { Session } from '@supabase/supabase-js';
+import { toWhatsAppNumber } from '../lib/phone';
 
 const { width } = Dimensions.get('window');
 
@@ -193,7 +194,7 @@ export default function WorkerProfileScreen() {
       Alert.alert('No WhatsApp Number', "This professional hasn't added a WhatsApp number yet.");
       return;
     }
-    Linking.openURL(`https://wa.me/${worker.whatsapp_number}`);
+    Linking.openURL(`https://wa.me/${toWhatsAppNumber(worker.whatsapp_number)}`);
   };
 
   const handleBook = () => {
@@ -208,7 +209,10 @@ export default function WorkerProfileScreen() {
         { text: 'Cancel', style: 'cancel' },
         { 
           text: 'Book Now',
-          onPress: () => router.push({ pathname: '/request-service', params: { worker_id: worker.id, worker_name: worker.name } })
+          onPress: () => router.push({
+            pathname: '/request-service',
+            params: { worker_id: worker.id, worker_name: worker.name, worker_specialty: worker.specialty || worker.category || 'General' },
+          })
         }
       ]
     );

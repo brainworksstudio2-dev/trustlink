@@ -268,3 +268,18 @@ begin
     );
   end if;
 end $$;
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- 9. One-time cleanup: workers.category was mangled by name + "s" before
+--    WorkerRegistrationScreen was fixed to use the real category list
+--    (e.g. "Photography" + "s" -> "Photographys" instead of
+--    "Photographers"). Rows saved before that fix still carry the wrong
+--    string, which shows up as a duplicate filter chip on Explore
+--    ("Photographers" and "Photographys" side by side). This repairs any
+--    rows still affected; new/edited profiles already save correctly.
+-- ─────────────────────────────────────────────────────────────────────────
+update public.workers set category = 'Plumbers' where category = 'Plumbings';
+update public.workers set category = 'Electricians' where category = 'Electricals';
+update public.workers set category = 'Photographers' where category = 'Photographys';
+update public.workers set category = 'Carpenters' where category = 'Carpentrys';
+update public.workers set category = 'Mechanics' where category = 'Mechanicss';
